@@ -73,7 +73,7 @@ otherwise.
 
 ## Step 2: Hours
 
-Two calls, in parallel, each with `userId`, `startDate`, `endDate`, `limit: 1000`: one
+Two calls, in parallel, each with `userId`, `startDate`, `endDate`, `limit: 500`: one
 for the week and one for the prior week. If `pagination.total` is more than the page,
 page with `offset` until you have everything. A partial week of hours is a wrong number,
 not an approximate one.
@@ -94,47 +94,78 @@ call from the first of the month.
 
 ## Step 3: Matters they're responsible for
 
-`list_matters` with `responsibleId: userId`, `archived: false`, `limit: 500`. Page if
-needed. Keep the set of `matterId`s. Steps 4 and 5 are about these matters, which covers
+`list_matters` with `responsibleId: userId`, `archived: false`, `limit: 500`. The
+connector caps every page at 500 whatever `limit` says, so page with `offset` if needed.
+Keep the set of `matterId`s. Steps 4 and 5 are about these matters, which covers
 work logged by anyone on them, not only by the attorney.
 
 ## Step 4: Unbilled work
 
-For each responsible matter, sum unbilled work:
+Unbilled work is what's been done but isn't on any invoice yet. Entries on a draft or
+in-review invoice already count as `billed: true`, so they appear in Step 5, not here.
 
-- `list_time_entries` with `matterId`, `billed: false`: hours and `amount`.
-- `list_fixed_fees` with `matterId`, `billed: false`: amounts.
-- `list_expenses` with `matterId`, `billed: false`: amounts.
+Count only what will actually be invoiced, and only up to the end of the week:
 
-Run these in parallel batches. If the attorney is responsible for more than about 30
-matters, it's cheaper to page each list once firm-wide with `billed: false` and keep only
-rows whose `matterId` is in the set.
+- **Time**: `list_time_entries` with `billed: false`, `billingType: "Billable"`,
+  `endDate` = end of week. Non-billable time is never invoiced, and time on fixed-fee
+  work is covered by the fixed-fee charge.
+- **Fixed fees**: `list_fixed_fees` with `billed: false`, `endDate` = end of week. Without
+  the date cut-off, future installments of a schedule show up as unbilled.
+- **Expenses**: `list_expenses` with `billed: false`, `endDate` = end of week.
+
+Responses are heavy (a full page of 500 time entries is roughly 300,000 characters) and
+`select` does not trim them, so keep every call small:
+
+1. **Size each list first.** Call it firm-wide with the filters above and `limit: 1`.
+   If `pagination.total` is 100 or fewer, fetch it firm-wide and keep rows whose
+   `matterId` is in the responsible set. Expenses and fixed fees usually qualify; time
+   entries usually don't.
+2. **Otherwise go per matter.** For each responsible matter, call with `matterId`, the
+   filters above, `sort: "date"` and `limit: 1`. `pagination.total` is the item count
+   and `data[0].date` is the oldest item. These responses are small; run them in
+   parallel batches.
+3. **Sum only what's worth fetching.** For matters with 1 to 200 items, fetch them
+   (`limit: 200`, paging with `offset`) and sum `amount`; for a count of 1, `data[0]`
+   from pass 2 already is the total. For a matter with more than 200 unbilled items,
+   don't fetch them: report the count and oldest date and say the backlog is large
+   enough to review in LeanLaw directly.
+
+If the agent can run subagents, run this step in one and have it return only the
+per-matter table, so the calls don't fill the main conversation.
 
 Report the matters with the most unbilled value first, with the date of the oldest
 unbilled item. Old WIP is the most useful signal: work from 60 or more days ago that
-hasn't been billed is the most likely to be written down or never collected. Leave out
-matters with nothing unbilled.
+hasn't been billed is the most likely to be written down or never collected. Show at
+most 10 matters and give the total and count for the rest. Leave out matters with
+nothing unbilled.
 
 ## Step 5: Invoices waiting on them
 
 `list_invoices` doesn't filter by responsible attorney, so resolve through the matters:
 call it with `invoiceState: "Draft"` and again with `invoiceState: "Review"`, page through
-all results, and keep invoices whose `matterId` is in the responsible set.
+all results, and keep invoices whose `matterId` is in the responsible set. An invoice
+that covers several matters for one client has no `matterId`; keep it if its `clientId`
+belongs to one of the responsible matters, and label it "multi-matter".
 
-Link each one to its pre-bill in LeanLaw:
+Link each matter invoice to its pre-bill in LeanLaw:
 
 ```
 https://myleanlaw.co/#/billing/{clientId}/{matterId}/review/{draft|review}/{invoiceId}
 ```
 
-Use `draft` or `review` to match the invoice's state. Show the invoice date, amount, and
-how long it has been sitting (today minus `invoiceDate`).
+Use `draft` or `review` to match the invoice's state. For a multi-matter invoice, give no
+link; say it's under **Billing → Review** in LeanLaw.
+
+Show the invoice date, amount, and how long it has been sitting (today minus
+`invoiceDate`), newest first. Drafts older than 90 days are usually abandoned rather than
+waiting on review: list at most 10 current ones, then one line with the count and total
+of the stale ones so they can be cleaned up or deleted in LeanLaw.
 
 ## Step 6: Draft flags
 
 Check the attorney's own **billable** entries for the week, plus the entries on the
-invoices from Step 5 (`list_time_entries` with `invoiceId`), since those are about to be
-reviewed. The checks are in
+current (not stale) invoices from Step 5 (`list_time_entries` with `invoiceId`), since
+those are about to be reviewed. The checks are in
 [references/draft-checks.md](references/draft-checks.md). Read it before flagging. Flag
 entries; don't rewrite them, and don't suggest a narrative that describes work the entry
 doesn't mention.
