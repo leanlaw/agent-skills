@@ -24,8 +24,8 @@ the connector adds its own prefix, which differs per install, so match on the su
 
 | Need | Tool |
 |---|---|
-| What this connection may read | `list_authorizations` |
-| Resolve the attorney | `list_users` |
+| Who the connection is, which firm, what it may read | `get_me` |
+| Resolve a different attorney | `list_users` |
 | Hours for the week | `list_time_entries` |
 | Matters they're responsible for | `list_matters` |
 | Unbilled work | `list_time_entries`, `list_fixed_fees`, `list_expenses` (all with `billed: false`) |
@@ -36,25 +36,27 @@ from anything other than the connector.
 
 ## Step 0: Preflight
 
-Run in parallel:
+Call `get_me` once. It returns the connection's `user` (id, name, email, role), its `firm`
+(name) and its granted `authorizations`, as `action:resource` scopes.
 
-- `list_authorizations`: needs read on time entries, matters and invoices. Fixed fees and
-  expenses are optional; if either is missing, leave it out of WIP and say so in the
-  report.
-- `list_users` to resolve the attorney (Step 1).
+- Needs `read:time-entries`, `read:matters` and `read:invoices`. If one is missing, name
+  it and stop.
+- `read:fixed-fees` and `read:expenses` are optional; if either is missing, leave it out
+  of unbilled work and say so in the report.
 
 ## Step 1: Whose dashboard, and which week
 
-**Attorney.** The connector acts as one named user but has no "who am I" call, so
-resolve the attorney explicitly:
+**Attorney.** Default to the connection's own user from `get_me`: the dashboard is
+usually for the person who connected. Use a different attorney only when the user or
+the scheduled task prompt names one:
 
-- If you know the user's email (from the conversation, the scheduled task prompt, or the
-  agent's account context), call `list_users` with `email`.
-- Otherwise ask for their name or email and use `list_users` with `query`.
-- Require exactly one match. On a shared name, ask which person, listing email and role.
+- Resolve them with `list_users` (`email` if you have it, otherwise `query`) and require
+  exactly one match. On a shared name, ask which person, listing email and role.
+- If `get_me` returns no `user`, the connection is firm-wide rather than one person's.
+  Ask whose dashboard to build, or take it from the task prompt.
 
-Keep `userId` for the rest of the run. When setting this up as a scheduled task, put the
-attorney's email in the task prompt so later runs don't need to ask.
+Keep `userId` for the rest of the run. A scheduled task for the connection's own user
+needs no email in its prompt; one for someone else does.
 
 **Week.** Weeks run Monday to Sunday. Default to the **last complete week** (on a
 Monday, that's the seven days that just ended). If the user asks for "this week", use
@@ -175,12 +177,13 @@ and give the count of the rest.
 
 ## Step 7: Report
 
-Lead with a one-line verdict: **Action needed** if there are invoices waiting on the
+Head the report with the week, the attorney's name and the firm name from `get_me`. Then
+lead with a one-line verdict: **Action needed** if there are invoices waiting on the
 attorney or draft flags, otherwise **Info only**. Then list the actions, then the numbers.
 Keep the whole thing readable on a phone.
 
 ```
-Week of Sep 14–20 · Dana Whitfield
+Week of Sep 14–20 · Dana Whitfield · Whitfield & Ellery LLP
 Action needed: 3 drafts waiting on you, 2 entries to tidy before billing
 
 WAITING ON YOU
@@ -213,9 +216,10 @@ it out, except the target line, which is left out when there's no target.
 
 This skill is meant to run as a scheduled task, for example every Monday at 7am. If the
 agent supports scheduled tasks, offer to set one up once the first report looks right,
-with a prompt like: *"Run the weekly attorney dashboard for dana@firm.com, target 37.5
-billable hours a week."* A scheduled run should never ask questions it can answer from
-the prompt.
+with a prompt like: *"Run my weekly attorney dashboard, target 37.5 billable hours a
+week."* Name the attorney's email in the prompt only if it's for someone other than the
+connection's own user. A scheduled run should never ask questions it can answer from
+`get_me` or the prompt.
 
 ## What this skill can't do
 
