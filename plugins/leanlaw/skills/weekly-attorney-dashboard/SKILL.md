@@ -25,7 +25,8 @@ connector adds its own prefix, which differs per install, so match on the suffix
 | Need | Tool |
 |---|---|
 | Who the connection is, which firm, what it may read | `get_me` |
-| The roster, and resolving a named timekeeper | `list_users` |
+| The roster, resolving a timekeeper, and their custom field values | `list_users` |
+| The firm's user custom field definitions | `list_custom_fields` |
 | **Every hours and value figure in the report** | `summarize_time_entries` |
 | Top five matters for a period | `list_time_entries` |
 
@@ -52,12 +53,41 @@ Call `get_me` once. It returns the connection's `user`, its `firm` and its grant
 
 ## Step 1: Setup questions
 
-Ask these **once**, when the report is first set up. Put the answers in
-[references/roster.md](references/roster.md) so later runs and scheduled runs don't ask
-again. A scheduled run must never ask a question — if something is missing, it reports
+Ask these **once**, when the report is first set up, then write the answers into the
+**scheduled task prompt** — that prompt is the report's entire configuration. There is no
+settings file: the recipient list and the goals live in LeanLaw as custom fields and are
+resolved on every run, so the only thing to carry forward is which field to read and which
+values qualify.
+
+A scheduled run must never ask a question. If its prompt is missing something, it reports
 what is missing and stops.
 
-Ask all four together, not one at a time.
+Ask all four together, not one at a time. Read the firm's user custom fields **before**
+asking, so questions 1 and 2 offer the firm's real field names and values instead of
+asking them to recall what they set up.
+
+### Reading user custom fields
+
+Two ways, depending on what the connector offers:
+
+- `list_custom_fields`, limited to the **user** entity, returns the definitions: each
+  field's id, name, value type, and for an enum its options.
+- `list_users` with `select` **including `customFields`** returns each user's values. The
+  `select` clause is all-or-nothing — one invented field name in the list and the whole
+  clause is ignored, and you get the default columns back with no error. That silent
+  failure reads exactly like "this firm has no custom fields", so if `customFields` comes
+  back missing, re-check the `select` string before concluding anything.
+
+A user's `customFields` entry looks like:
+
+```json
+{ "id": "a0891cf1-…", "name": "Monthly Hourly Target", "valueType": "Number", "value": 344 }
+{ "id": "618fd324-…", "name": "Employment Status", "valueType": "Enum",
+  "value": "Employee", "optionId": "6570f6d9-…" }
+```
+
+Match on the field `id`, not the name — names get edited. Users with the field unset come
+back with it absent from the array, or with the array empty.
 
 ### 1. Who should get it?
 
@@ -67,18 +97,33 @@ Ask all four together, not one at a time.
 2. **Certain roles.** `list_users` filters by `role`: `Principal`, `Attorney`,
    `Paralegal`, `Timekeeper`, `Operator`, `Accountant`. Ask which roles, and note that
    this is the reliable way to leave out back office and accounting.
-3. **A custom field**, such as "Receives Weekly Time Report".
+3. **A user custom field**, such as "Receives Weekly Time Report" or "Employment Status".
 
-   **The connector does not expose user custom fields today.** `list_users` returns only
-   `userId`, `name`, `firstName`, `lastName`, `initials`, `role` and `email`, and `select`
-   does not widen that. So do not offer to read the field and do not guess its values.
-   Say plainly that it can't be read yet, then offer the two things that do work:
-   - the firm names the people once, and they are recorded in `references/roster.md`; or
-   - the firm keeps the field as the source of truth in LeanLaw and re-exports the list
-     when it changes.
+   Show the firm their own **enum** fields with the options each one has, since an enum is
+   what a recipient rule is normally built on, and propose the one that fits:
 
-   Record which field the firm intends to use, so the roster file says where the list came
-   from and the skill can switch to reading it directly once the connector supports it.
+   ```
+   Employment Status    Employee · Contractor · Partner
+   ```
+
+   Guess, then confirm — don't make them choose from a bare list:
+   - A field whose name mentions report, weekly, digest or email, with yes/no-shaped
+     options, is almost certainly the intended switch. Propose it and the affirmative
+     option.
+   - Otherwise propose the field that separates people who bill from people who don't, and
+     the options to include. For the example above, that is Employment Status with
+     Employee and Partner, leaving out Contractor.
+
+   Then filter users on that field's `id` and the chosen `optionId`. A number or text
+   field works too — match on `value`.
+
+   Put the field **id** and the qualifying values in the scheduled prompt, with the field
+   name alongside so the prompt stays readable. Ids survive a rename; names don't. The
+   roster then resolves from LeanLaw on every run rather than being frozen at setup.
+
+   **People with the field unset are excluded**, and the skill says how many were dropped
+   for that reason. Silently omitting someone whose field was never filled in is how a
+   partner stops getting their report and nobody notices.
 
 Whichever option is chosen, **show the resolved list of names and email addresses and get
 a yes before the first send.** A roster is the thing most likely to be wrong, and a wrong
@@ -86,16 +131,27 @@ roster means someone's hours go to the wrong partner.
 
 ### 2. How is the monthly goal determined?
 
-1. **A custom field**, such as "Monthly Billable Hours Goal". Same limitation as above:
-   the connector can't read user custom fields. Say so, and record the goals in
-   `references/roster.md` instead — the file takes a per-person number precisely because
-   goals differ by seniority.
-2. **One number for everyone.** Ask for it and write it to the roster file as the default.
+1. **A user custom field**, such as "Monthly Hourly Target". This is the option to
+   recommend: goals differ by seniority, and a field keeps them in LeanLaw where the firm
+   already maintains them instead of in a file that drifts.
+
+   Offer the firm's **number** fields whose names suggest a target — target, goal, hours,
+   billable — and propose the closest match. Then read each user's `value`.
+
+   **Confirm what period the number is.** A field named "Monthly Hourly Target" says
+   monthly, but firms store annual targets in similarly-named fields. Ask, and convert:
+   annual ÷ 12 for a monthly goal. Getting this wrong scales every bar and every
+   percentage in the report by twelve, and it looks plausible either way.
+
+   Put the field id and the period in the scheduled prompt.
+
+2. **One number for everyone.** Ask for it and put it in the scheduled prompt.
 3. **Leave it out.** Then drop the goal column, the goal-vs-actual block and the bar
    scaling, and show hours per month on their own. Do not invent a default goal.
 
-If goals are per person and some people are missing one, those timekeepers get the report
-without the goal sections rather than a borrowed number.
+Whichever the source, timekeepers whose goal is missing or zero get the report **without**
+the goal column, the goal-vs-actual block and the bar scaling, rather than a borrowed
+number or a division by zero. Say how many were affected.
 
 ### 3. When should they get it?
 
@@ -179,7 +235,43 @@ opens the mail:
 Check contrast before sending. Grey text under about 4.5:1 against white is hard to read
 on screen and worse in print; the layout file gives the values to use.
 
-## Step 6: Deliver it
+## Step 6: Preview against their own data, and agree the format
+
+Before anything is scheduled or sent, **render a real report for a real timekeeper from
+their account and show it.** A layout agreed in the abstract is not agreed; a firm only
+sees what they actually want changed once their own names and numbers are in it.
+
+Pick two people, not one:
+
+1. **Someone with a full week** — the most entries in the reporting week, so every section
+   is populated and the format can be judged.
+2. **Someone sparse** — few matters, or no goal set. This is where a layout breaks: a
+   top-five table with two rows, a missing goal column, a month with no time. Better the
+   firm sees that now than in a partner's inbox.
+
+Show the rendered result and walk through what is worth checking, rather than asking a
+bare "does this look right?":
+
+- **The greeting and the firm name** as they will appear.
+- **The period labels** — that the week, the month and the year all close on the same day.
+- **Matter naming** — whether matter-then-client reads correctly for how they name things,
+  and that two matters for one client show as two rows.
+- **The value columns** — some firms do not want hourly value in front of every
+  timekeeper. Dropping them is a reasonable request; ask rather than assume.
+- **The goal figures.** This is the one most likely to be wrong, and the sanity check is
+  arithmetic: a monthly goal should be in the range a person could actually bill. A
+  "monthly" goal reading 12, or 344, means the field holds something else — an annual
+  number, a weekly one, or test data. Raise it rather than rendering it.
+- **Non-billable placement**, and that it is clearly not counted toward the goal.
+
+Take adjustments, re-render, and show it again. Repeat until they say it's right. Only
+then offer to schedule it (Step 7 and below).
+
+If the firm wants a version to circulate before committing — to a managing partner, say —
+render it to PDF as well; `references/email-layout.md` has the recipe and the flags that
+matter.
+
+## Step 7: Deliver it
 
 **The LeanLaw connector cannot send email.** It reads billing data; that is all.
 
@@ -189,26 +281,38 @@ on screen and worse in print; the layout file gives the values to use.
 - If it doesn't, output the HTML body and say it needs to go through the firm's own mail
   system.
 
-Never send to a roster without confirmation, and never on a scheduled run unless the firm
-explicitly approved that roster for unattended sending.
+Never send to a roster without confirmation. A scheduled run sends unattended only if the
+prompt says the firm approved that, and the prompt only says so after they have seen a
+real send. Otherwise the run renders the reports and hands them back for review.
 
 ## Running it every week
 
-The scheduled prompt should name the report and the roster file, and nothing else:
-*"Run the weekly billable hours report for the roster in references/roster.md."*
+Only offer this once the firm has approved a rendered report in Step 6. Scheduling a
+format nobody has seen produces a Monday morning of corrections.
 
-A scheduled run answers every question from the roster file. If the file is missing a
-goal, a recipient or an email address, the run reports the gap and stops rather than
-guessing or asking.
+The scheduled prompt carries the whole configuration, because there is no settings file
+for it to read. Write it out in full when setting the schedule up:
+
+> Run the weekly billable hours report for last week.
+> Recipients: users whose "Employment Status" field (`618fd324-…`) is Employee or Partner.
+> Goal: the "Monthly Hourly Target" field (`a0891cf1-…`), which holds a monthly number.
+> Include week, month to date and year to date.
+> Render each report and hand them back for review; do not send.
+
+Field ids belong in the prompt alongside the names — a renamed field breaks a
+name-matched prompt silently, and the run would either pick the wrong field or report an
+empty roster.
+
+If the prompt is missing the selection rule, the goal source or the sections, the run
+reports what is missing and stops rather than guessing.
 
 ## What this skill can't do
 
 Say so rather than approximating:
 
-- **Read user custom fields.** The connector returns only the fields listed in Step 1.
-  Recipient lists and per-person goals live in `references/roster.md` until that changes.
-  This is the main thing to revisit as the connector gains fields.
-- **Send mail on its own.** See Step 6.
+- **Send mail on its own.** See Step 7.
+- **Create or edit a custom field.** It reads them. Adding a "Receives Weekly Time Report"
+  field, or filling in a target for someone who has none, is done in LeanLaw.
 - **Report on people the connection can't see.** A roster-wide run needs a connection with
   firm-wide read access. A single attorney's connection can only report on that attorney.
 - **AR, collections or realization.** Out of scope. Billed and collected figures live in
