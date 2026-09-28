@@ -27,19 +27,23 @@ connector adds its own prefix, which differs per install, so match on the suffix
 | Who the connection is, which firm, what it may read | `get_me` |
 | The roster, resolving a timekeeper, and their custom field values | `list_users` |
 | The firm's user custom field definitions | `list_custom_fields` |
-| **Every hours and value figure in the report** | `summarize_time_entries` |
-| Top five matters for a period | `list_time_entries` |
+| **Every hours and value figure in the report, including the top five matters** | `summarize_time_entries` |
+| The week's entry narratives, only for the optional pre-bill flags | `list_time_entries` |
 
 **Use `summarize_time_entries` for every total.** It takes up to 20 labelled date ranges in
 one call and returns, per range, the entry count and hours split into billable,
 non-billable and fixed fee, plus `billableAmount` when the connection has the rates scope.
 Pass `allUsers: true` and it returns the same breakdown per user, so one call covers the
-whole roster for every period in the report. Do not add up `list_time_entries` rows to
-reach a total — that is slower, costs far more context, and silently truncates at the page
-limit.
+whole roster for every period in the report. Pass `groupBy` and it breaks each range down
+by user and matter server-side, which is where the top five matters come from (Step 4).
 
-`summarize_time_entries` has no matter dimension, so it cannot produce the top five
-matters. That is the one thing `list_time_entries` is for here (Step 4).
+Never use `list_time_entries` for any figure in the report, and never add up its rows. It
+is slower, costs far more context, and silently truncates at the page limit — a missed
+page is a wrong total that looks entirely plausible.
+
+The report is **two calls** for a roster of up to about 80 people: one grouped call for the week and
+month to date (Step 4), and one ungrouped call for the monthly rows and the pace range
+(Step 3).
 
 ## Step 0: Preflight
 
@@ -178,46 +182,78 @@ report closes on the same day as that week, so month to date and year to date bo
 through the Sunday, not through today. A figure that closes on a different day than the
 others invites exactly the arithmetic question the report should answer.
 
-## Step 3: Every total, in one call
+## Step 3: The year-to-date totals, in one call
 
 Build the ranges and make a single `summarize_time_entries` call with `allUsers: true`
-(or `userId` for one person):
+(or `userId` for one person), without `groupBy`. These ranges need no matter breakdown,
+and grouping twelve months by matter would only add size:
 
 | Label | Range |
 |---|---|
-| `Week ending <date>` | Monday to Sunday of the reporting week |
-| `MTD` | 1st of the month to the week's end date |
 | `Jan` … the current month | each calendar month, the current one truncated to the week's end date |
 | `Through <last complete month>` | Jan 1 to the end of the last complete month |
 
-That is 12 ranges in September and 15 in December — inside the 20-range cap. If a request
+That is 10 ranges in September and 13 in December — inside the 20-range cap. If a request
 ever needs more than 20, split it across calls rather than dropping ranges.
 
 Read from each range: `billableHours`, `nonBillableHours`, `billableAmount`, and
-`entryCount`. Ranges are totalled independently and may overlap, so MTD and the month row
-returning the same numbers is correct, not a bug.
+`entryCount`. With `allUsers: true` each range also has a `users` array with the same
+fields per user. Ranges are totalled independently and may overlap, so the current month's
+row here and MTD in Step 4 returning the same numbers is correct, not a bug.
 
 The `Through <last complete month>` range is what the goal-vs-actual block compares
 against `goal × number of complete months`. Use complete months only — a partial September
 against a full monthly goal reads as a shortfall that isn't real.
 
-## Step 4: Top five matters
+## Step 4: The week, month to date and top five matters, in one call
 
-`summarize_time_entries` has no matter breakdown, so for each timekeeper in the roster
-call `list_time_entries` with their `userId`, `billingType: "Billable"`, the period's
-dates and `limit: 500`, then group by `matterId` locally and sum `hours` and `amount`.
-Do this for the week and, if month to date is included, for the month.
+Make one more `summarize_time_entries` call for the week and month to date, grouped by
+user and then by matter:
+
+```json
+{
+  "ranges": [
+    { "label": "Week ending 2026-09-27", "startDate": "2026-09-21", "endDate": "2026-09-27" },
+    { "label": "MTD", "startDate": "2026-09-01", "endDate": "2026-09-27" }
+  ],
+  "allUsers": true,
+  "groupBy": [{ "by": "user" }, { "by": "matter", "top": 5 }],
+  "sort": "billableHours"
+}
+```
+
+For one person, pass `userId` instead of `allUsers`. Leave the month-to-date range out if the
+report is week only.
+
+- **`sort: "billableHours"` is required.** The default ranks by total hours, which lets a
+  non-billable internal matter take a top-five slot.
+- **`top` applies per user**, so every timekeeper gets their own five, however few hours
+  they logged.
+
+Each range's `groups` holds one entry per user. Each user entry has the range totals for
+that user (`billableHours`, `nonBillableHours`, `billableAmount`), then:
+
+- `groups`: up to five matters, in order. Each has `matter.name`, `client.name`,
+  `billableHours` and `billableAmount`.
+- `other`: the remaining matters, totalled, with `groupCount` saying how many.
+
+The server guarantees that the five plus `other` add up to that user's totals. Render
+straight from these fields; do no arithmetic of your own.
 
 - **List each matter separately.** Two matters for the same client are two rows. Never
   aggregate them into one client line — firms check this, and combining them hides which
   engagement the time went to.
 - Show the client name under the matter name so the pairing is unambiguous.
-- Below the five, add one **All other matters (n)** row with the remaining hours and
-  value, so the rows sum to the period total shown above them.
-- If the period has five or fewer matters, list them all and leave out the extra row.
+- **Drop any listed matter with zero billable hours.** It can only appear when the person
+  had fewer than five billable matters, and it adds nothing to the billable figures.
+- Below the matters, add one **All other matters (n)** row from `other`, with n =
+  `other.groupCount`. Leave the row out when `other.billableHours` is 0.
+- A user who logged no time in a range has no entry in that range's `groups`. Show their
+  week as empty rather than dropping them from the report.
 
-A week of one timekeeper's billable entries is small. If a month exceeds the page limit,
-page with `offset` — a partial total is a wrong number, not an approximate one.
+If the call fails because it would return too many groups, the roster is too large for one
+call: each person costs six groups per range, and a call returns at most 1,000. Make one
+call per range instead, week and month to date separately. Do not lower `top`.
 
 ## Step 5: Render the report
 
@@ -321,9 +357,10 @@ Say so rather than approximating:
 
 ## Optional: flag entries before billing
 
-Some firms want the weekly mail to double as a pre-bill nudge. If asked, check the week's
-billable entries against [references/draft-checks.md](references/draft-checks.md) and add
-a short **Tidy before billing** section listing at most ten flagged entries. Flag them;
+Some firms want the weekly mail to double as a pre-bill nudge. If asked, fetch the week's
+billable entries with `list_time_entries` (`userId`, `billingType: "Billable"`, the week's
+dates, paging with `offset` until every entry is read), check them against
+[references/draft-checks.md](references/draft-checks.md), and add a short **Tidy before billing** section listing at most ten flagged entries. Flag them;
 never rewrite a narrative, and never describe work an entry doesn't mention. This is off
 by default — it changes the mail from an encouraging summary into a task list, which not
 every firm wants going to its partners.
