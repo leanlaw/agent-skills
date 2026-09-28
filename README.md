@@ -50,4 +50,4 @@ folder to wherever your agent loads skills from, for example `.github/skills/` f
 
 ## Support
 
-Questions or feedback: contact LeanLaw support through [leanlaw.co](https://leanlaw.co).
+Questions or feedback: email support@myleanlaw.com.
