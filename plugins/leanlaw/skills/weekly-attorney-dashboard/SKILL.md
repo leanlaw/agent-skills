@@ -53,9 +53,13 @@ Call `get_me` once. It returns the connection's `user`, its `firm` and its grant
 
 ## Step 1: Setup questions
 
-Ask these **once**, when the report is first set up. Put the answers in
-[references/roster.md](references/roster.md) so later runs and scheduled runs don't ask
-again. A scheduled run must never ask a question — if something is missing, it reports
+Ask these **once**, when the report is first set up, then write the answers into the
+**scheduled task prompt** — that prompt is the report's entire configuration. There is no
+settings file: the recipient list and the goals live in LeanLaw as custom fields and are
+resolved on every run, so the only thing to carry forward is which field to read and which
+values qualify.
+
+A scheduled run must never ask a question. If its prompt is missing something, it reports
 what is missing and stops.
 
 Ask all four together, not one at a time. Read the firm's user custom fields **before**
@@ -113,9 +117,9 @@ back with it absent from the array, or with the array empty.
    Then filter users on that field's `id` and the chosen `optionId`. A number or text
    field works too — match on `value`.
 
-   Record the field id, the field name and the qualifying values in
-   `references/roster.md`, so a later run resolves the roster from LeanLaw rather than a
-   frozen list, and a reader of the file can see the rule.
+   Put the field **id** and the qualifying values in the scheduled prompt, with the field
+   name alongside so the prompt stays readable. Ids survive a rename; names don't. The
+   roster then resolves from LeanLaw on every run rather than being frozen at setup.
 
    **People with the field unset are excluded**, and the skill says how many were dropped
    for that reason. Silently omitting someone whose field was never filled in is how a
@@ -139,9 +143,9 @@ roster means someone's hours go to the wrong partner.
    annual ÷ 12 for a monthly goal. Getting this wrong scales every bar and every
    percentage in the report by twelve, and it looks plausible either way.
 
-   Record the field id and the period in `references/roster.md`.
+   Put the field id and the period in the scheduled prompt.
 
-2. **One number for everyone.** Ask for it and write it to the roster file as the default.
+2. **One number for everyone.** Ask for it and put it in the scheduled prompt.
 3. **Leave it out.** Then drop the goal column, the goal-vs-actual block and the bar
    scaling, and show hours per month on their own. Do not invent a default goal.
 
@@ -241,17 +245,27 @@ on screen and worse in print; the layout file gives the values to use.
 - If it doesn't, output the HTML body and say it needs to go through the firm's own mail
   system.
 
-Never send to a roster without confirmation, and never on a scheduled run unless the firm
-explicitly approved that roster for unattended sending.
+Never send to a roster without confirmation. A scheduled run sends unattended only if the
+prompt says the firm approved that, and the prompt only says so after they have seen a
+real send. Otherwise the run renders the reports and hands them back for review.
 
 ## Running it every week
 
-The scheduled prompt should name the report and the roster file, and nothing else:
-*"Run the weekly billable hours report for the roster in references/roster.md."*
+The scheduled prompt carries the whole configuration, because there is no settings file
+for it to read. Write it out in full when setting the schedule up:
 
-A scheduled run answers every question from the roster file. If the file is missing a
-goal, a recipient or an email address, the run reports the gap and stops rather than
-guessing or asking.
+> Run the weekly billable hours report for last week.
+> Recipients: users whose "Employment Status" field (`618fd324-…`) is Employee or Partner.
+> Goal: the "Monthly Hourly Target" field (`a0891cf1-…`), which holds a monthly number.
+> Include week, month to date and year to date.
+> Render each report and hand them back for review; do not send.
+
+Field ids belong in the prompt alongside the names — a renamed field breaks a
+name-matched prompt silently, and the run would either pick the wrong field or report an
+empty roster.
+
+If the prompt is missing the selection rule, the goal source or the sections, the run
+reports what is missing and stops rather than guessing.
 
 ## What this skill can't do
 
