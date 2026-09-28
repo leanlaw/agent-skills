@@ -12,33 +12,70 @@ roster is the thing most worth being able to look at before a Monday send.
 Set one of these. The skill asks once and records the answer.
 
 ```
-selection: everyone | roles | named
-roles: Principal, Attorney          # only when selection = roles
-source_field:                       # the LeanLaw custom field this list came from, if any
+selection: everyone | roles | custom_field | named
+roles: Principal, Attorney               # only when selection = roles
+field_id:                                # only when selection = custom_field
+field_name:                              # for humans reading this file
+field_values:                            # the values that qualify someone
 last_reviewed: YYYY-MM-DD
 ```
 
 `selection: everyone` means every user who logged time in the reporting week.
 
-**On `source_field`.** The LeanLaw connector does not expose user custom fields — a
-`list_users` call returns only `userId`, `name`, `firstName`, `lastName`, `initials`,
-`role` and `email`, and `select` does not widen that. So a field like "Receives Weekly
-Time Report" can stay the firm's source of truth in LeanLaw, but the skill can't read it.
-Name it here, list the people it currently resolves to in the table below, and update the
-table when the field changes. If the connector later exposes user fields, this note is
-what tells the skill it can read the field directly instead.
+**On `custom_field`.** This is resolved live from LeanLaw on every run, so the firm
+maintains the list where it already works rather than here. Record the field's `id` as
+`field_id` — names get edited, ids don't — and keep `field_name` alongside it so this file
+stays readable.
+
+```
+selection: custom_field
+field_id: 618fd324-6ce2-43b4-97be-1f1e4e81b567
+field_name: Employment Status
+field_values: Employee, Partner
+```
+
+Anyone whose field is unset is excluded, and the run reports how many were dropped that
+way. With `selection: named`, the table below is the roster.
+
+## Monthly goal
+
+Where each timekeeper's monthly billable-hours goal comes from.
+
+```
+goal_source: custom_field | default | none
+goal_field_id:                      # only when goal_source = custom_field
+goal_field_name:                    # for humans reading this file
+goal_field_period: monthly | annual # what the stored number means
+default_goal_hours:                 # only when goal_source = default
+```
+
+**Prefer `custom_field`.** Goals differ by seniority and change as people move, and a
+field keeps them in LeanLaw where the firm already maintains them.
+
+```
+goal_source: custom_field
+goal_field_id: a0891cf1-30f5-46b8-907d-19820040a06e
+goal_field_name: Monthly Hourly Target
+goal_field_period: monthly
+```
+
+`goal_field_period` is not decoration. A field named for a month can hold an annual
+number, and reading one as the other scales every bar and percentage in the report by
+twelve while still looking plausible. An annual figure is divided by 12.
+
+Anyone whose goal is missing or zero gets the report without the goal column, the
+goal-vs-actual block and the bar scaling, rather than someone else's number.
 
 ## People
 
-One row per recipient. `goal_hours` is billable hours per month.
+Only needed for `selection: named`, or to override what LeanLaw says for one person.
+`goal_hours` here wins over the custom field and the default.
 
 | email | goal_hours | include | notes |
 |---|---|---|---|
 
-Leave `goal_hours` blank for someone who has no goal; they get the report without the
-goal column, the goal-vs-actual block and the bar scaling, rather than someone else's
-number. Set `include` to `no` to keep a row for the record while dropping the person from
-the send.
+Set `include` to `no` to keep a row for the record while dropping the person from the
+send — it is worth leaving the row and the reason rather than deleting it.
 
 Example rows, not used:
 
@@ -47,17 +84,6 @@ Example rows, not used:
 | j.ruiz@example.com  | 120 | yes | associate, reduced schedule |
 | office@example.com  |     | no  | back office, no billable goal |
 ```
-
-## Default goal
-
-Used when the firm sets one number for everyone rather than per-person goals. A row in the
-table always wins over this.
-
-```
-default_goal_hours:
-```
-
-Leave it empty to run without goals entirely.
 
 ## Delivery
 
