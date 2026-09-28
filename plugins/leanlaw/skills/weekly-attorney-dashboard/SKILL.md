@@ -1,201 +1,225 @@
 ---
 name: weekly-attorney-dashboard
-description: Build an attorney's weekly time and billing summary from LeanLaw — billable and non-billable hours by client and matter against the prior week, pace against a billable-hours target, unbilled work on the matters they're responsible for, draft and in-review invoices waiting on them with links to the pre-bill, and flags on entries that may not survive review (block billing, vague narratives). Use when an attorney asks for their weekly dashboard, weekly summary, "how did my week look", "am I on pace", "what's waiting on me before month-end", or when running it as a weekly scheduled task. Read-only; it never edits time or invoices. Not for firm-wide or partner rollups, AR aging or collections. Requires the LeanLaw MCP connector.
+description: Build the firm's weekly billable hours report for one timekeeper or a roster of them — hours and value for the week, month to date and year to date, each timekeeper's top five matters, and progress against a monthly billable-hours goal — and render it as an email body the firm can send Monday morning. Use when someone asks for a weekly time report, a weekly billable hours email, a timekeeper summary, "how did my week look", "am I on pace", or when setting this up as a weekly scheduled task. Read-only against LeanLaw; it never edits time or invoices and never sends mail without confirmation. Not for AR aging, collections or partner compensation. Requires the LeanLaw MCP connector.
 ---
 
-# Weekly attorney dashboard
+# Weekly billable hours report
 
-One run produces **one attorney's summary for one week**. It is read-only: every tool it
-calls is a `list_` or `get_` call, and it never creates, edits or approves anything.
+One run produces the **weekly time report** for one timekeeper or for a roster of them. It
+is read-only: every LeanLaw tool it calls is a `list_`, `get_` or `summarize_` call, and it
+never creates, edits or approves anything.
 
-It answers three questions for the attorney:
+The report answers one question per timekeeper: **is my time going in, and am I on pace?**
+Three periods, each billable-first:
 
-1. **Is my time going in?** Hours for the week, by client and matter, and against the
-   target. (Utilization.)
-2. **Will it survive to the invoice?** Entries likely to be written down at review.
-   (Realization.)
-3. **What's stuck on me?** Unbilled work and invoices waiting for my review. (Billing
-   velocity: work that sits in WIP or in a draft is work that isn't cash yet.)
+1. **The week just ended** — billable hours, value, non-billable hours, top five matters.
+2. **Month to date** — the same, through the same closing day as the week.
+3. **Year to date** — each month against the monthly goal, then goal vs actual through the
+   last complete month.
 
 ## Tools
 
-All tools come from the **LeanLaw MCP connector**. The names below are logical names;
-the connector adds its own prefix, which differs per install, so match on the suffix.
+All tools come from the **LeanLaw MCP connector**. The names below are logical names; the
+connector adds its own prefix, which differs per install, so match on the suffix.
 
 | Need | Tool |
 |---|---|
-| What this connection may read | `list_authorizations` |
-| Resolve the attorney | `list_users` |
-| Hours for the week | `list_time_entries` |
-| Matters they're responsible for | `list_matters` |
-| Unbilled work | `list_time_entries`, `list_fixed_fees`, `list_expenses` (all with `billed: false`) |
-| Invoices waiting on them | `list_invoices` |
+| Who the connection is, which firm, what it may read | `get_me` |
+| The roster, and resolving a named timekeeper | `list_users` |
+| **Every hours and value figure in the report** | `summarize_time_entries` |
+| Top five matters for a period | `list_time_entries` |
 
-If the connector isn't available, say so and stop. Don't estimate numbers from memory or
-from anything other than the connector.
+**Use `summarize_time_entries` for every total.** It takes up to 20 labelled date ranges in
+one call and returns, per range, the entry count and hours split into billable,
+non-billable and fixed fee, plus `billableAmount` when the connection has the rates scope.
+Pass `allUsers: true` and it returns the same breakdown per user, so one call covers the
+whole roster for every period in the report. Do not add up `list_time_entries` rows to
+reach a total — that is slower, costs far more context, and silently truncates at the page
+limit.
+
+`summarize_time_entries` has no matter dimension, so it cannot produce the top five
+matters. That is the one thing `list_time_entries` is for here (Step 4).
 
 ## Step 0: Preflight
 
-Run in parallel:
+Call `get_me` once. It returns the connection's `user`, its `firm` and its granted
+`authorizations` as `action:resource` scopes.
 
-- `list_authorizations`: needs read on time entries, matters and invoices. Fixed fees and
-  expenses are optional; if either is missing, leave it out of WIP and say so in the
-  report.
-- `list_users` to resolve the attorney (Step 1).
+- Needs `read:time-entries` and `read:users`. If either is missing, name it and stop.
+- `read:rates` is what populates `billableAmount`. Without it, build the report on hours
+  alone, drop the value columns, and say so at the top rather than showing zeros —
+  `billableAmount` comes back as `0`, which is not the same as no revenue.
 
-## Step 1: Whose dashboard, and which week
+## Step 1: Setup questions
 
-**Attorney.** The connector acts as one named user but has no "who am I" call, so
-resolve the attorney explicitly:
+Ask these **once**, when the report is first set up. Put the answers in
+[references/roster.md](references/roster.md) so later runs and scheduled runs don't ask
+again. A scheduled run must never ask a question — if something is missing, it reports
+what is missing and stops.
 
-- If you know the user's email (from the conversation, the scheduled task prompt, or the
-  agent's account context), call `list_users` with `email`.
-- Otherwise ask for their name or email and use `list_users` with `query`.
-- Require exactly one match. On a shared name, ask which person, listing email and role.
+Ask all four together, not one at a time.
 
-Keep `userId` for the rest of the run. When setting this up as a scheduled task, put the
-attorney's email in the task prompt so later runs don't need to ask.
+### 1. Who should get it?
 
-**Week.** Weeks run Monday to Sunday. Default to the **last complete week** (on a
-Monday, that's the seven days that just ended). If the user asks for "this week", use
-Monday through today and label it "week to date". Compare against the seven days before.
+1. **Everyone who logged time.** Pull the roster from `summarize_time_entries` with
+   `allUsers: true` for the week — it returns only users with entries, which is usually
+   what "everyone" means. Offer to exclude users with no billable hours at all.
+2. **Certain roles.** `list_users` filters by `role`: `Principal`, `Attorney`,
+   `Paralegal`, `Timekeeper`, `Operator`, `Accountant`. Ask which roles, and note that
+   this is the reliable way to leave out back office and accounting.
+3. **A custom field**, such as "Receives Weekly Time Report".
 
-**Target.** The connector has no billable-target field. Use, in order:
+   **The connector does not expose user custom fields today.** `list_users` returns only
+   `userId`, `name`, `firstName`, `lastName`, `initials`, `role` and `email`, and `select`
+   does not widen that. So do not offer to read the field and do not guess its values.
+   Say plainly that it can't be read yet, then offer the two things that do work:
+   - the firm names the people once, and they are recorded in `references/roster.md`; or
+   - the firm keeps the field as the source of truth in LeanLaw and re-exports the list
+     when it changes.
 
-1. A target the user states, or one written in the scheduled task prompt.
-2. A firm table the user has added at [references/targets.md](references/targets.md).
-3. Nothing. If there's no target, leave the pace section out of the report entirely. Don't
-   invent a default.
+   Record which field the firm intends to use, so the roster file says where the list came
+   from and the skill can switch to reading it directly once the connector supports it.
 
-A target can be weekly, monthly or annual. Convert it to the reporting week and state the
-conversion: annual ÷ 48 working weeks, monthly × 12 ÷ 48, unless the firm's table says
-otherwise.
+Whichever option is chosen, **show the resolved list of names and email addresses and get
+a yes before the first send.** A roster is the thing most likely to be wrong, and a wrong
+roster means someone's hours go to the wrong partner.
 
-## Step 2: Hours
+### 2. How is the monthly goal determined?
 
-Two calls, in parallel, each with `userId`, `startDate`, `endDate`, `limit: 1000`: one
-for the week and one for the prior week. If `pagination.total` is more than the page,
-page with `offset` until you have everything. A partial week of hours is a wrong number,
-not an approximate one.
+1. **A custom field**, such as "Monthly Billable Hours Goal". Same limitation as above:
+   the connector can't read user custom fields. Say so, and record the goals in
+   `references/roster.md` instead — the file takes a per-person number precisely because
+   goals differ by seniority.
+2. **One number for everyone.** Ask for it and write it to the roster file as the default.
+3. **Leave it out.** Then drop the goal column, the goal-vs-actual block and the bar
+   scaling, and show hours per month on their own. Do not invent a default goal.
 
-Group the week's entries by client and matter and sum `hours` by `billingType`:
+If goals are per person and some people are missing one, those timekeepers get the report
+without the goal sections rather than a borrowed number.
 
-- `Billable` counts toward the target.
-- `FixedFee` is productive time on flat-fee work. Show it separately. It counts toward
-  the target only if the firm's target says so.
-- `NonBillable` is shown but never counts toward the target.
+### 3. When should they get it?
 
-Show `amount` (value at rate) for billable time where the entry has one. Don't compute a
-value for entries without a rate.
+Ask for the day and time, and the time zone. Monday morning is the common answer, and the
+report then covers the week that ended the day before.
 
-Pace: `billable hours ÷ weekly target`. Also show month-to-date if the target is monthly
-and today is past the first week of the month; this needs one more `list_time_entries`
-call from the first of the month.
+If the agent supports scheduled tasks, offer to create it once the first report looks
+right. If it doesn't, say so and give the firm the prompt to schedule elsewhere.
 
-## Step 3: Matters they're responsible for
+### 4. What should the report include?
 
-`list_matters` with `responsibleId: userId`, `archived: false`, `limit: 500`. Page if
-needed. Keep the set of `matterId`s. Steps 4 and 5 are about these matters, which covers
-work logged by anyone on them, not only by the attorney.
+1. Week only
+2. Week and month to date
+3. Week, month to date and year to date
+4. All of the above (the default, and what the layout is designed around)
 
-## Step 4: Unbilled work
+Year to date carries the chart and the goal-vs-actual block, so dropping it also drops
+those.
 
-For each responsible matter, sum unbilled work:
+## Step 2: The reporting window
 
-- `list_time_entries` with `matterId`, `billed: false`: hours and `amount`.
-- `list_fixed_fees` with `matterId`, `billed: false`: amounts.
-- `list_expenses` with `matterId`, `billed: false`: amounts.
+Weeks run **Monday to Sunday**. Default to the **last complete week**. Every period in the
+report closes on the same day as that week, so month to date and year to date both run
+through the Sunday, not through today. A figure that closes on a different day than the
+others invites exactly the arithmetic question the report should answer.
 
-Run these in parallel batches. If the attorney is responsible for more than about 30
-matters, it's cheaper to page each list once firm-wide with `billed: false` and keep only
-rows whose `matterId` is in the set.
+## Step 3: Every total, in one call
 
-Report the matters with the most unbilled value first, with the date of the oldest
-unbilled item. Old WIP is the most useful signal: work from 60 or more days ago that
-hasn't been billed is the most likely to be written down or never collected. Leave out
-matters with nothing unbilled.
+Build the ranges and make a single `summarize_time_entries` call with `allUsers: true`
+(or `userId` for one person):
 
-## Step 5: Invoices waiting on them
+| Label | Range |
+|---|---|
+| `Week ending <date>` | Monday to Sunday of the reporting week |
+| `MTD` | 1st of the month to the week's end date |
+| `Jan` … the current month | each calendar month, the current one truncated to the week's end date |
+| `Through <last complete month>` | Jan 1 to the end of the last complete month |
 
-`list_invoices` doesn't filter by responsible attorney, so resolve through the matters:
-call it with `invoiceState: "Draft"` and again with `invoiceState: "Review"`, page through
-all results, and keep invoices whose `matterId` is in the responsible set.
+That is 12 ranges in September and 15 in December — inside the 20-range cap. If a request
+ever needs more than 20, split it across calls rather than dropping ranges.
 
-Link each one to its pre-bill in LeanLaw:
+Read from each range: `billableHours`, `nonBillableHours`, `billableAmount`, and
+`entryCount`. Ranges are totalled independently and may overlap, so MTD and the month row
+returning the same numbers is correct, not a bug.
 
-```
-https://myleanlaw.co/#/billing/{clientId}/{matterId}/review/{draft|review}/{invoiceId}
-```
+The `Through <last complete month>` range is what the goal-vs-actual block compares
+against `goal × number of complete months`. Use complete months only — a partial September
+against a full monthly goal reads as a shortfall that isn't real.
 
-Use `draft` or `review` to match the invoice's state. Show the invoice date, amount, and
-how long it has been sitting (today minus `invoiceDate`).
+## Step 4: Top five matters
 
-## Step 6: Draft flags
+`summarize_time_entries` has no matter breakdown, so for each timekeeper in the roster
+call `list_time_entries` with their `userId`, `billingType: "Billable"`, the period's
+dates and `limit: 500`, then group by `matterId` locally and sum `hours` and `amount`.
+Do this for the week and, if month to date is included, for the month.
 
-Check the attorney's own **billable** entries for the week, plus the entries on the
-invoices from Step 5 (`list_time_entries` with `invoiceId`), since those are about to be
-reviewed. The checks are in
-[references/draft-checks.md](references/draft-checks.md). Read it before flagging. Flag
-entries; don't rewrite them, and don't suggest a narrative that describes work the entry
-doesn't mention.
+- **List each matter separately.** Two matters for the same client are two rows. Never
+  aggregate them into one client line — firms check this, and combining them hides which
+  engagement the time went to.
+- Show the client name under the matter name so the pairing is unambiguous.
+- Below the five, add one **All other matters (n)** row with the remaining hours and
+  value, so the rows sum to the period total shown above them.
+- If the period has five or fewer matters, list them all and leave out the extra row.
 
-Keep the list short. If more than 10 entries are flagged, show the 10 with the most hours
-and give the count of the rest.
+A week of one timekeeper's billable entries is small. If a month exceeds the page limit,
+page with `offset` — a partial total is a wrong number, not an approximate one.
 
-## Step 7: Report
+## Step 5: Render the report
 
-Lead with a one-line verdict: **Action needed** if there are invoices waiting on the
-attorney or draft flags, otherwise **Info only**. Then list the actions, then the numbers.
-Keep the whole thing readable on a phone.
+The layout, the Outlook-safe HTML and the full worked example are in
+[references/email-layout.md](references/email-layout.md). **Read it before rendering.**
 
-```
-Week of Sep 14–20 · Dana Whitfield
-Action needed: 3 drafts waiting on you, 2 entries to tidy before billing
+The two rules that matter most, because getting them wrong is invisible until someone
+opens the mail:
 
-WAITING ON YOU
-- Riverbend — Series B financing · draft · $8,420.00 · 6 days  → [open pre-bill]
-- ...
+- **No SVG, ever.** Outlook on Windows renders through Word and drops SVG silently,
+  leaving a blank gap where the chart was. The bar chart is nested HTML tables with
+  background colors on table cells.
+- **No CSS classes, variables, flex or grid.** Every style is inline on the element.
 
-HOURS                    This week   Prior week
-Billable                    31.2        28.5
-Fixed fee                    4.0         6.5
-Non-billable                 5.5         4.0
-Target (37.5/wk)            83%         76%
+Check contrast before sending. Grey text under about 4.5:1 against white is hard to read
+on screen and worse in print; the layout file gives the values to use.
 
-By matter (billable + fixed fee)
-- Riverbend — Series B financing      12.4
-- ...
+## Step 6: Deliver it
 
-UNBILLED ON YOUR MATTERS               Oldest item
-- Harbor Point — Lease dispute   $14,210.00    Jul 2 (83 days)
-- ...
+**The LeanLaw connector cannot send email.** It reads billing data; that is all.
 
-TIDY BEFORE BILLING
-- Sep 16 · Riverbend · 6.5h · "Work on financing docs": possible block billing; vague
-- ...
-```
+- If the agent has an email tool, offer to send. **Show the recipient list, the subject and
+  the rendered body, and get an explicit yes first** — and on the first run, send only to
+  the person setting it up, so they see what their partners will see.
+- If it doesn't, output the HTML body and say it needs to go through the firm's own mail
+  system.
 
-If a section is empty, say so in one line ("Nothing waiting on you") rather than leaving
-it out, except the target line, which is left out when there's no target.
+Never send to a roster without confirmation, and never on a scheduled run unless the firm
+explicitly approved that roster for unattended sending.
 
 ## Running it every week
 
-This skill is meant to run as a scheduled task, for example every Monday at 7am. If the
-agent supports scheduled tasks, offer to set one up once the first report looks right,
-with a prompt like: *"Run the weekly attorney dashboard for dana@firm.com, target 37.5
-billable hours a week."* A scheduled run should never ask questions it can answer from
-the prompt.
+The scheduled prompt should name the report and the roster file, and nothing else:
+*"Run the weekly billable hours report for the roster in references/roster.md."*
+
+A scheduled run answers every question from the roster file. If the file is missing a
+goal, a recipient or an email address, the run reports the gap and stops rather than
+guessing or asking.
 
 ## What this skill can't do
 
 Say so rather than approximating:
 
-- **Other attorneys' dashboards.** It only reports what the connection's user may read.
-  A partner rollup across the team, or sending the report to every attorney, needs an
-  admin connection and is not part of this skill.
-- **Edit or approve invoices.** The connector can't update an invoice; the links open the
-  pre-bill in LeanLaw.
-- **AR and collections.** Out of scope; outstanding balances live in the firm's
-  accounting system or LeanLaw's receivables reports.
-- **Targets stored in LeanLaw.** There is no target field on the connector, so the
-  target comes from the user or the firm's table.
+- **Read user custom fields.** The connector returns only the fields listed in Step 1.
+  Recipient lists and per-person goals live in `references/roster.md` until that changes.
+  This is the main thing to revisit as the connector gains fields.
+- **Send mail on its own.** See Step 6.
+- **Report on people the connection can't see.** A roster-wide run needs a connection with
+  firm-wide read access. A single attorney's connection can only report on that attorney.
+- **AR, collections or realization.** Out of scope. Billed and collected figures live in
+  LeanLaw's receivables reports and the firm's accounting system.
+- **Compensation or origination splits.** A different question and a different skill.
+
+## Optional: flag entries before billing
+
+Some firms want the weekly mail to double as a pre-bill nudge. If asked, check the week's
+billable entries against [references/draft-checks.md](references/draft-checks.md) and add
+a short **Tidy before billing** section listing at most ten flagged entries. Flag them;
+never rewrite a narrative, and never describe work an entry doesn't mention. This is off
+by default — it changes the mail from an encouraging summary into a task list, which not
+every firm wants going to its partners.
