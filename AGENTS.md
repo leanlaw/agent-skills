@@ -16,7 +16,7 @@ billing data through the LeanLaw MCP connector. `README.md` is the external cata
 - Every write a skill makes (client, matter, fixed fee, time entry) is confirmed by the user first.
 - A skill's directory name must equal its frontmatter `name`, and the name must be plain (no `/` or
   `:`).
-- Every skill name is prefixed `leanlaw-` (e.g. `leanlaw-weekly-attorney-dashboard`).
+- Every skill name is prefixed `leanlaw-` (e.g. `leanlaw-weekly-dashboard`).
 - Adding or changing a skill means three edits: the skill folder, its row in `README.md`, and the
   `version` in `plugins/leanlaw/.claude-plugin/plugin.json`.
 
