@@ -25,7 +25,8 @@ connector adds its own prefix, which differs per install, so match on the suffix
 | Need | Tool |
 |---|---|
 | Who the connection is, which firm, what it may read | `get_me` |
-| The roster, and resolving a named timekeeper | `list_users` |
+| The roster, resolving a timekeeper, and their custom field values | `list_users` |
+| The firm's user custom field definitions | `list_custom_fields` |
 | **Every hours and value figure in the report** | `summarize_time_entries` |
 | Top five matters for a period | `list_time_entries` |
 
@@ -57,7 +58,32 @@ Ask these **once**, when the report is first set up. Put the answers in
 again. A scheduled run must never ask a question — if something is missing, it reports
 what is missing and stops.
 
-Ask all four together, not one at a time.
+Ask all four together, not one at a time. Read the firm's user custom fields **before**
+asking, so questions 1 and 2 offer the firm's real field names and values instead of
+asking them to recall what they set up.
+
+### Reading user custom fields
+
+Two ways, depending on what the connector offers:
+
+- `list_custom_fields`, limited to the **user** entity, returns the definitions: each
+  field's id, name, value type, and for an enum its options.
+- `list_users` with `select` **including `customFields`** returns each user's values. The
+  `select` clause is all-or-nothing — one invented field name in the list and the whole
+  clause is ignored, and you get the default columns back with no error. That silent
+  failure reads exactly like "this firm has no custom fields", so if `customFields` comes
+  back missing, re-check the `select` string before concluding anything.
+
+A user's `customFields` entry looks like:
+
+```json
+{ "id": "a0891cf1-…", "name": "Monthly Hourly Target", "valueType": "Number", "value": 344 }
+{ "id": "618fd324-…", "name": "Employment Status", "valueType": "Enum",
+  "value": "Employee", "optionId": "6570f6d9-…" }
+```
+
+Match on the field `id`, not the name — names get edited. Users with the field unset come
+back with it absent from the array, or with the array empty.
 
 ### 1. Who should get it?
 
@@ -67,18 +93,33 @@ Ask all four together, not one at a time.
 2. **Certain roles.** `list_users` filters by `role`: `Principal`, `Attorney`,
    `Paralegal`, `Timekeeper`, `Operator`, `Accountant`. Ask which roles, and note that
    this is the reliable way to leave out back office and accounting.
-3. **A custom field**, such as "Receives Weekly Time Report".
+3. **A user custom field**, such as "Receives Weekly Time Report" or "Employment Status".
 
-   **The connector does not expose user custom fields today.** `list_users` returns only
-   `userId`, `name`, `firstName`, `lastName`, `initials`, `role` and `email`, and `select`
-   does not widen that. So do not offer to read the field and do not guess its values.
-   Say plainly that it can't be read yet, then offer the two things that do work:
-   - the firm names the people once, and they are recorded in `references/roster.md`; or
-   - the firm keeps the field as the source of truth in LeanLaw and re-exports the list
-     when it changes.
+   Show the firm their own **enum** fields with the options each one has, since an enum is
+   what a recipient rule is normally built on, and propose the one that fits:
 
-   Record which field the firm intends to use, so the roster file says where the list came
-   from and the skill can switch to reading it directly once the connector supports it.
+   ```
+   Employment Status    Employee · Contractor · Partner
+   ```
+
+   Guess, then confirm — don't make them choose from a bare list:
+   - A field whose name mentions report, weekly, digest or email, with yes/no-shaped
+     options, is almost certainly the intended switch. Propose it and the affirmative
+     option.
+   - Otherwise propose the field that separates people who bill from people who don't, and
+     the options to include. For the example above, that is Employment Status with
+     Employee and Partner, leaving out Contractor.
+
+   Then filter users on that field's `id` and the chosen `optionId`. A number or text
+   field works too — match on `value`.
+
+   Record the field id, the field name and the qualifying values in
+   `references/roster.md`, so a later run resolves the roster from LeanLaw rather than a
+   frozen list, and a reader of the file can see the rule.
+
+   **People with the field unset are excluded**, and the skill says how many were dropped
+   for that reason. Silently omitting someone whose field was never filled in is how a
+   partner stops getting their report and nobody notices.
 
 Whichever option is chosen, **show the resolved list of names and email addresses and get
 a yes before the first send.** A roster is the thing most likely to be wrong, and a wrong
@@ -86,16 +127,27 @@ roster means someone's hours go to the wrong partner.
 
 ### 2. How is the monthly goal determined?
 
-1. **A custom field**, such as "Monthly Billable Hours Goal". Same limitation as above:
-   the connector can't read user custom fields. Say so, and record the goals in
-   `references/roster.md` instead — the file takes a per-person number precisely because
-   goals differ by seniority.
+1. **A user custom field**, such as "Monthly Hourly Target". This is the option to
+   recommend: goals differ by seniority, and a field keeps them in LeanLaw where the firm
+   already maintains them instead of in a file that drifts.
+
+   Offer the firm's **number** fields whose names suggest a target — target, goal, hours,
+   billable — and propose the closest match. Then read each user's `value`.
+
+   **Confirm what period the number is.** A field named "Monthly Hourly Target" says
+   monthly, but firms store annual targets in similarly-named fields. Ask, and convert:
+   annual ÷ 12 for a monthly goal. Getting this wrong scales every bar and every
+   percentage in the report by twelve, and it looks plausible either way.
+
+   Record the field id and the period in `references/roster.md`.
+
 2. **One number for everyone.** Ask for it and write it to the roster file as the default.
 3. **Leave it out.** Then drop the goal column, the goal-vs-actual block and the bar
    scaling, and show hours per month on their own. Do not invent a default goal.
 
-If goals are per person and some people are missing one, those timekeepers get the report
-without the goal sections rather than a borrowed number.
+Whichever the source, timekeepers whose goal is missing or zero get the report **without**
+the goal column, the goal-vs-actual block and the bar scaling, rather than a borrowed
+number or a division by zero. Say how many were affected.
 
 ### 3. When should they get it?
 
@@ -205,10 +257,9 @@ guessing or asking.
 
 Say so rather than approximating:
 
-- **Read user custom fields.** The connector returns only the fields listed in Step 1.
-  Recipient lists and per-person goals live in `references/roster.md` until that changes.
-  This is the main thing to revisit as the connector gains fields.
 - **Send mail on its own.** See Step 6.
+- **Create or edit a custom field.** It reads them. Adding a "Receives Weekly Time Report"
+  field, or filling in a target for someone who has none, is done in LeanLaw.
 - **Report on people the connection can't see.** A roster-wide run needs a connection with
   firm-wide read access. A single attorney's connection can only report on that attorney.
 - **AR, collections or realization.** Out of scope. Billed and collected figures live in
