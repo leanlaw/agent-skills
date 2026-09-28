@@ -235,7 +235,43 @@ opens the mail:
 Check contrast before sending. Grey text under about 4.5:1 against white is hard to read
 on screen and worse in print; the layout file gives the values to use.
 
-## Step 6: Deliver it
+## Step 6: Preview against their own data, and agree the format
+
+Before anything is scheduled or sent, **render a real report for a real timekeeper from
+their account and show it.** A layout agreed in the abstract is not agreed; a firm only
+sees what they actually want changed once their own names and numbers are in it.
+
+Pick two people, not one:
+
+1. **Someone with a full week** — the most entries in the reporting week, so every section
+   is populated and the format can be judged.
+2. **Someone sparse** — few matters, or no goal set. This is where a layout breaks: a
+   top-five table with two rows, a missing goal column, a month with no time. Better the
+   firm sees that now than in a partner's inbox.
+
+Show the rendered result and walk through what is worth checking, rather than asking a
+bare "does this look right?":
+
+- **The greeting and the firm name** as they will appear.
+- **The period labels** — that the week, the month and the year all close on the same day.
+- **Matter naming** — whether matter-then-client reads correctly for how they name things,
+  and that two matters for one client show as two rows.
+- **The value columns** — some firms do not want hourly value in front of every
+  timekeeper. Dropping them is a reasonable request; ask rather than assume.
+- **The goal figures.** This is the one most likely to be wrong, and the sanity check is
+  arithmetic: a monthly goal should be in the range a person could actually bill. A
+  "monthly" goal reading 12, or 344, means the field holds something else — an annual
+  number, a weekly one, or test data. Raise it rather than rendering it.
+- **Non-billable placement**, and that it is clearly not counted toward the goal.
+
+Take adjustments, re-render, and show it again. Repeat until they say it's right. Only
+then offer to schedule it (Step 7 and below).
+
+If the firm wants a version to circulate before committing — to a managing partner, say —
+render it to PDF as well; `references/email-layout.md` has the recipe and the flags that
+matter.
+
+## Step 7: Deliver it
 
 **The LeanLaw connector cannot send email.** It reads billing data; that is all.
 
@@ -250,6 +286,9 @@ prompt says the firm approved that, and the prompt only says so after they have 
 real send. Otherwise the run renders the reports and hands them back for review.
 
 ## Running it every week
+
+Only offer this once the firm has approved a rendered report in Step 6. Scheduling a
+format nobody has seen produces a Monday morning of corrections.
 
 The scheduled prompt carries the whole configuration, because there is no settings file
 for it to read. Write it out in full when setting the schedule up:
@@ -271,7 +310,7 @@ reports what is missing and stops rather than guessing.
 
 Say so rather than approximating:
 
-- **Send mail on its own.** See Step 6.
+- **Send mail on its own.** See Step 7.
 - **Create or edit a custom field.** It reads them. Adding a "Receives Weekly Time Report"
   field, or filling in a target for someone who has none, is done in LeanLaw.
 - **Report on people the connection can't see.** A roster-wide run needs a connection with
