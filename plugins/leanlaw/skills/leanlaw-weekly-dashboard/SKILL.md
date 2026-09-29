@@ -1,6 +1,6 @@
 ---
 name: leanlaw-weekly-dashboard
-description: Build the firm's weekly billable hours report for one timekeeper or a roster of them — hours and value for the week, month to date and year to date, each timekeeper's top five matters, and progress against a monthly billable-hours goal — and render it as an email body the firm can send Monday morning. Use when someone asks for a weekly time report, a weekly billable hours email, a timekeeper summary, "how did my week look", "am I on pace", or when setting this up as a weekly scheduled task. Read-only against LeanLaw; it never edits time or invoices and never sends mail without confirmation. Not for AR aging, collections or partner compensation. Requires the LeanLaw MCP connector.
+description: Build the firm's weekly billable hours report for one timekeeper or a roster of them — hours and value for the week, month to date and year to date, each timekeeper's top five matters, and progress against a monthly billable-hours goal — and deliver it Monday morning by email, Slack or Teams through whichever of those connectors the agent has. Use when someone asks for a weekly time report, a weekly billable hours email, a timekeeper summary, "how did my week look", "am I on pace", or when setting this up as a weekly scheduled task. Read-only against LeanLaw; it never edits time or invoices and never sends without confirmation. Not for AR aging, collections or partner compensation. Requires the LeanLaw MCP connector.
 ---
 
 # Weekly billable hours report
@@ -19,8 +19,9 @@ Three periods, each billable-first:
 
 ## Tools
 
-All tools come from the **LeanLaw MCP connector**. The names below are logical names; the
-connector adds its own prefix, which differs per install, so match on the suffix.
+The data comes from the **LeanLaw MCP connector**; delivery comes from a separate email,
+Slack or Teams connector (Step 7). The names below are logical names; the connector adds
+its own prefix, which differs per install, so match on the suffix.
 
 | Need | Tool |
 |---|---|
@@ -66,7 +67,7 @@ values qualify.
 A scheduled run must never ask a question. If its prompt is missing something, it reports
 what is missing and stops.
 
-Ask all four together, not one at a time. Read the firm's user custom fields **before**
+Ask all five together, not one at a time. Read the firm's user custom fields **before**
 asking, so questions 1 and 2 offer the firm's real field names and values instead of
 asking them to recall what they set up.
 
@@ -174,6 +175,18 @@ right. If it doesn't, say so and give the firm the prompt to schedule elsewhere.
 
 Year to date carries the chart and the goal-vs-actual block, so dropping it also drops
 those.
+
+### 5. How should it reach them?
+
+Before asking, look for delivery connectors as described in Step 7 and **propose the best
+one you found**: "I can send these from your Outlook account, one email per timekeeper."
+Don't ask them to name a channel from a blank slate.
+
+If you find none, say which connectors would work (Gmail, Outlook / Microsoft 365, Slack,
+Teams) and that connecting one now is what makes the report arrive on its own. Until then
+the reports come back to them to send.
+
+Put the channel, and the account or workspace it sends from, in the scheduled prompt.
 
 ## Step 2: The reporting window
 
@@ -309,17 +322,61 @@ matter.
 
 ## Step 7: Deliver it
 
-**The LeanLaw connector cannot send email.** It reads billing data; that is all.
+The LeanLaw connector reads billing data and nothing else, so delivery has to come from
+another connector. **Finding that connector is part of the job.** "LeanLaw can't send
+email" is not a stopping point; the report exists to land in someone's inbox.
 
-- If the agent has an email tool, offer to send. **Show the recipient list, the subject and
-  the rendered body, and get an explicit yes first** — and on the first run, send only to
-  the person setting it up, so they see what their partners will see.
-- If it doesn't, output the HTML body and say it needs to go through the firm's own mail
-  system.
+### Find a delivery channel
 
-Never send to a roster without confirmation. A scheduled run sends unattended only if the
-prompt says the firm approved that, and the prompt only says so after they have seen a
-real send. Otherwise the run renders the reports and hands them back for review.
+Look through **every** tool the agent has, not only LeanLaw's, for one that can deliver to
+a person. Match on what the tool does, not on its prefix:
+
+| Channel | A tool that… | Typical names |
+|---|---|---|
+| Email (Gmail, Outlook / Microsoft 365, other mail) | sends, or drafts, a message with recipients, a subject and a body | `send_message`, `send_email`, `send_mail`, `create_draft` |
+| Slack | posts a message to a person or a channel | `send_message`, `post_message`, `schedule_message` |
+| Microsoft Teams | posts a chat or channel message | `send_chat_message`, `post_message` |
+
+Prefer them in this order:
+
+1. **Email, one message per timekeeper.** The layout is built for it, and each recipient
+   is already addressed by the email on their LeanLaw user.
+2. **A Slack or Teams direct message** to each timekeeper.
+3. **A shared channel**, only for a single-person report or when the firm explicitly asks.
+   Posting a roster's reports in one channel shows every timekeeper's hours to the others.
+
+If the only email tool creates drafts, use it: drafts in the sender's mailbox are a good
+first run, and the firm sends them by hand until they trust the output.
+
+If nothing can deliver, check whether the agent can add a connector (a connector directory
+or suggestion tool) and recommend the one that fits the firm's mail system. Only when no
+channel exists and none can be added, hand back the rendered reports and name the
+connector that would make the next run deliver itself.
+
+### Fit the report to the channel
+
+- **Email:** send the Step 5 HTML as the message body, not as an attachment. Check the
+  tool takes an HTML body (a `contentType`, `isHtml` or `htmlBody` parameter, or similar).
+  If it only takes plain text, send a plain-text version rather than raw HTML tags.
+- **Slack or Teams:** neither renders an HTML email. Send a short message in the
+  channel's own formatting: billable hours and value for the week and month to date, the
+  year-to-date pace against goal, and the top five matters as a list. If the tool can
+  attach a file, attach the PDF version (`references/email-layout.md` has the recipe).
+- **Match every recipient.** For Slack or Teams, look each timekeeper up by the email on
+  their LeanLaw user with that connector's user-search tool. List anyone who can't be
+  matched instead of skipping them.
+
+### Confirm before sending
+
+- **Show the channel, the recipient list, the subject and the rendered body, and get an
+  explicit yes first.** On the first run, send only to the person setting it up, so they
+  see what their partners will see.
+- Never send to a roster without confirmation. A scheduled run sends unattended only if
+  the prompt says the firm approved that, and the prompt only says so after they have
+  seen a real send. Otherwise the run renders the reports and hands them back for review.
+- If a scheduled run can't reach the connector its prompt names, it renders the reports,
+  hands them back, and says the connector was unavailable. It does not switch to a
+  different channel on its own.
 
 ## Running it every week
 
@@ -333,20 +390,22 @@ for it to read. Write it out in full when setting the schedule up:
 > Recipients: users whose "Employment Status" field (`618fd324-…`) is Employee or Partner.
 > Goal: the "Monthly Hourly Target" field (`a0891cf1-…`), which holds a monthly number.
 > Include week, month to date and year to date.
+> Delivery: one Outlook email per timekeeper, sent from the setup user's mailbox.
 > Render each report and hand them back for review; do not send.
 
 Field ids belong in the prompt alongside the names — a renamed field breaks a
 name-matched prompt silently, and the run would either pick the wrong field or report an
 empty roster.
 
-If the prompt is missing the selection rule, the goal source or the sections, the run
+If the prompt is missing the selection rule, the goal source, the sections or the delivery channel, the run
 reports what is missing and stops rather than guessing.
 
 ## What this skill can't do
 
 Say so rather than approximating:
 
-- **Send mail on its own.** See Step 7.
+- **Send without a delivery connector.** LeanLaw only reads data; Step 7 finds an email,
+  Slack or Teams connector to send through.
 - **Create or edit a custom field.** It reads them. Adding a "Receives Weekly Time Report"
   field, or filling in a target for someone who has none, is done in LeanLaw.
 - **Report on people the connection can't see.** A roster-wide run needs a connection with

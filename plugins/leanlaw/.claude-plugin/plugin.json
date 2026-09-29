@@ -1,7 +1,7 @@
 {
   "name": "leanlaw",
   "description": "Agent skills for running a law firm's billing workflow in LeanLaw over the LeanLaw MCP connector.",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "author": {
     "name": "LeanLaw",
     "url": "https://leanlaw.co"
