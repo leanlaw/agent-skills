@@ -284,11 +284,34 @@ opens the mail:
 Check contrast before sending. Grey text under about 4.5:1 against white is hard to read
 on screen and worse in print; the layout file gives the values to use.
 
-## Step 6: Preview against their own data, and agree the format
+## Step 6: Preview on screen, and agree the format
 
-Before anything is scheduled or sent, **render a real report for a real timekeeper from
-their account and show it.** A layout agreed in the abstract is not agreed; a firm only
-sees what they actually want changed once their own names and numbers are in it.
+**Nothing is sent until the firm has seen the report on screen and approved it.** The
+order is fixed: preview and tweak here, then one test send to the person setting it up
+(Step 7), then the roster, then the schedule. Don't skip ahead to a send because a
+delivery connector is available.
+
+Render a real report for a real timekeeper from their account. A layout agreed in the
+abstract is not agreed; a firm only sees what they actually want changed once their own
+names and numbers are in it.
+
+### Show it visually
+
+The preview is the rendered email, not its HTML source. Use the best surface the agent
+has, in this order:
+
+1. **An artifact, canvas or inline HTML preview** the user can see in the conversation.
+2. **An HTML file opened in a browser**, if the agent can write files and open them.
+3. **A PDF or screenshot** of the rendered page (`references/email-layout.md` has the PDF
+   recipe).
+
+Pasting raw HTML into the chat is not a preview. If none of these surfaces exists, say
+so, and make the Step 7 test send to the setup user the preview instead — still before
+anyone else receives anything.
+
+Keep the preview at the email's own width, so what they approve is what the mail client
+shows. For a Slack or Teams delivery, preview the message as it will be posted, not only
+the HTML version.
 
 Pick two people, not one:
 
@@ -313,8 +336,9 @@ bare "does this look right?":
   number, a weekly one, or test data. Raise it rather than rendering it.
 - **Non-billable placement**, and that it is clearly not counted toward the goal.
 
-Take adjustments, re-render, and show it again. Repeat until they say it's right. Only
-then offer to schedule it (Step 7 and below).
+Take adjustments, re-render, and show the updated preview in the same place, so each
+round replaces the last rather than stacking up copies. Repeat until they say it's right.
+Only then move to the test send in Step 7.
 
 If the firm wants a version to circulate before committing — to a managing partner, say —
 render it to PDF as well; `references/email-layout.md` has the recipe and the flags that
@@ -366,11 +390,21 @@ connector that would make the next run deliver itself.
   their LeanLaw user with that connector's user-search tool. List anyone who can't be
   matched instead of skipping them.
 
-### Confirm before sending
+### Test send, then the roster
 
-- **Show the channel, the recipient list, the subject and the rendered body, and get an
-  explicit yes first.** On the first run, send only to the person setting it up, so they
-  see what their partners will see.
+Only after the preview in Step 6 is approved:
+
+1. **Test send to the person setting it up, and nobody else.** Confirm the channel, their
+   address and the subject first. Ask them to open it in the mail client the firm
+   actually uses — desktop Outlook especially — and compare it with the approved
+   preview. Clients drop styling a browser preview keeps; this is where that shows up.
+2. **If it differs, fix it, re-preview on screen, and test send again.** Don't go to the
+   roster with a known difference.
+3. **Then the roster.** Show the channel, the full recipient list, the subject and one
+   rendered body, and get an explicit yes before sending.
+
+### Unattended runs
+
 - Never send to a roster without confirmation. A scheduled run sends unattended only if
   the prompt says the firm approved that, and the prompt only says so after they have
   seen a real send. Otherwise the run renders the reports and hands them back for review.
@@ -380,8 +414,9 @@ connector that would make the next run deliver itself.
 
 ## Running it every week
 
-Only offer this once the firm has approved a rendered report in Step 6. Scheduling a
-format nobody has seen produces a Monday morning of corrections.
+Only offer this once the firm has approved the on-screen preview in Step 6 and seen a
+test send in Step 7. Scheduling a format nobody has seen produces a Monday morning of
+corrections.
 
 The scheduled prompt carries the whole configuration, because there is no settings file
 for it to read. Write it out in full when setting the schedule up:
