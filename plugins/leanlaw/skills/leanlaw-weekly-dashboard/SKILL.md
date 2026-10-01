@@ -1,13 +1,14 @@
 ---
 name: leanlaw-weekly-dashboard
-description: Build the firm's weekly billable hours report for one timekeeper or a roster of them — hours and value for the week, month to date and year to date, each timekeeper's top five matters, and progress against a monthly billable-hours goal — and deliver it Monday morning by email, Slack or Teams through whichever of those connectors the agent has. Use when someone asks for a weekly time report, a weekly billable hours email, a timekeeper summary, "how did my week look", "am I on pace", or when setting this up as a weekly scheduled task. Read-only against LeanLaw; it never edits time or invoices and never sends without confirmation. Not for AR aging, collections or partner compensation. Requires the LeanLaw MCP connector.
+description: Build the firm's weekly billable hours report for one timekeeper or a roster of them — hours and value for the week, month to date and year to date, each timekeeper's top five matters, and progress against a monthly billable-hours goal — and deliver it Monday morning by email through LeanLaw's own send_report_email tool, or else through the agent's Gmail, Slack or Teams connector. Use when someone asks for a weekly time report, a weekly billable hours email, a timekeeper summary, "how did my week look", "am I on pace", or when setting this up as a weekly scheduled task. Read-only against LeanLaw data; it never edits time or invoices and never sends without confirmation. Not for AR aging, collections or partner compensation. Requires the LeanLaw MCP connector.
 ---
 
 # Weekly billable hours report
 
 One run produces the **weekly time report** for one timekeeper or for a roster of them. It
-is read-only: every LeanLaw tool it calls is a `list_`, `get_` or `summarize_` call, and it
-never creates, edits or approves anything.
+is read-only against LeanLaw data: every LeanLaw tool it calls is a `list_`, `get_` or
+`summarize_` call, except `send_report_email`, which delivers the finished report and
+changes nothing. It never creates, edits or approves anything.
 
 The report answers one question per timekeeper: **is my time going in, and am I on pace?**
 Three periods, each billable-first:
@@ -19,8 +20,9 @@ Three periods, each billable-first:
 
 ## Tools
 
-The data comes from the **LeanLaw MCP connector**; delivery comes from a separate email,
-Slack or Teams connector (Step 7). The names below are logical names; the connector adds
+The data comes from the **LeanLaw MCP connector**, and so, by default, does delivery:
+`send_report_email` emails the report to people in the firm (Step 7). Another email, Slack
+or Teams connector is the fallback. The names below are logical names; the connector adds
 its own prefix, which differs per install, so match on the suffix.
 
 | Need | Tool |
@@ -30,6 +32,7 @@ its own prefix, which differs per install, so match on the suffix.
 | The firm's user custom field definitions | `list_custom_fields` |
 | **Every hours and value figure in the report, including the top five matters** | `summarize_time_entries` |
 | The week's entry narratives, only for the optional pre-bill flags | `list_time_entries` |
+| **Emailing each timekeeper their report**, the default delivery (Step 7) | `send_report_email` |
 
 **Use `summarize_time_entries` for every total.** It takes up to 20 labelled date ranges in
 one call and returns, per range, the entry count and hours split into billable,
@@ -178,13 +181,14 @@ those.
 
 ### 5. How should it reach them?
 
-Before asking, look for delivery connectors as described in Step 7 and **propose the best
-one you found**: "I can send these from your Outlook account, one email per timekeeper."
-Don't ask them to name a channel from a blank slate.
+Before asking, look for a delivery channel as described in Step 7 and **propose the best
+one you found**. Usually that is LeanLaw itself: "I can email these from LeanLaw, one per
+timekeeper, with replies coming to you." Don't ask them to name a channel from a blank
+slate.
 
-If you find none, say which connectors would work (Gmail, Outlook / Microsoft 365, Slack,
-Teams) and that connecting one now is what makes the report arrive on its own. Until then
-the reports come back to them to send.
+If `send_report_email` isn't available, say why it's worth having and how to turn it on
+(Step 7), then offer the best fallback you found. If there is no channel at all, the
+reports come back to them to send until one is set up.
 
 Put the channel, and the account or workspace it sends from, in the scheduled prompt.
 
@@ -346,14 +350,52 @@ matter.
 
 ## Step 7: Deliver it
 
-The LeanLaw connector reads billing data and nothing else, so delivery has to come from
-another connector. **Finding that connector is part of the job.** "LeanLaw can't send
-email" is not a stopping point; the report exists to land in someone's inbox.
+**Finding a delivery channel is part of the job.** The report exists to land in someone's
+inbox, so a run that ends with "I can't send email" has stopped short.
 
-### Find a delivery channel
+### Use `send_report_email` first
 
-Look through **every** tool the agent has, not only LeanLaw's, for one that can deliver to
-a person. Match on what the tool does, not on its prefix:
+The LeanLaw connector has its own email tool, `send_report_email`, built for exactly this
+report. Prefer it over every other channel:
+
+- **The HTML arrives as rendered.** The layout in `references/email-layout.md` survives it
+  intact, so what the firm approved in Step 6 is what lands.
+- **It addresses people by LeanLaw user.** Pass the `userId` you already have from
+  `list_users`; there's no address to look up or mistype.
+- **Replies go to the person running it.** The email comes from LeanLaw on their behalf,
+  with their name on it and a footer saying it was sent from Claude.
+
+Call it once per timekeeper:
+
+| Argument | Value |
+|---|---|
+| `to` | `[{ "userId": "<the timekeeper's userId>" }]` |
+| `subject` | e.g. `Your week: 32.5 billable hours (week of 13 Oct)`, on one line |
+| `htmlBody` | the Step 5 HTML, as the body, not an attachment |
+| `reportName` | `weekly-billable-hours` |
+
+It can only reach **users of the firm**, and a firm can email at most **200 recipients a
+day**, with no more than **10 emails to one person a day**. A roster report fits easily,
+but a run that is retried over and over won't. If it returns a limit error, stop and report
+it rather than switching channels.
+
+**If `send_report_email` isn't in the tool list**, the connection hasn't been allowed to send
+email. Two things fix it:
+
+1. **A firm admin turns it on.** In LeanLaw, go to Settings → Agent Access, open the agent's
+   Permissions, and tick **Sending email**. That also allows seeing the firm's people,
+   which the tool needs.
+2. **The person running the report reconnects** the LeanLaw connector and approves
+   "Email reports to people in your firm".
+
+It also refuses to send over an API-key connection; it has to be a signed-in LeanLaw user.
+Say this plainly, and recommend doing it before the first scheduled run. Then use a
+fallback for now.
+
+### Fallbacks
+
+Only when `send_report_email` isn't available, look through **every** other tool the agent
+has for one that can deliver to a person. Match on what the tool does, not on its prefix:
 
 | Channel | A tool that… | Typical names |
 |---|---|---|
@@ -363,25 +405,31 @@ a person. Match on what the tool does, not on its prefix:
 
 Prefer them in this order:
 
-1. **Email, one message per timekeeper.** The layout is built for it, and each recipient
-   is already addressed by the email on their LeanLaw user.
+1. **Gmail, one message per timekeeper.** It sends the HTML body as written, so the report
+   arrives as designed.
 2. **A Slack or Teams direct message** to each timekeeper.
-3. **A shared channel**, only for a single-person report or when the firm explicitly asks.
+3. **The Microsoft 365 / Outlook connector, reluctantly.** It strips the report's styling,
+   so the layout arrives as unformatted text. Tell the firm that before using it, and
+   recommend turning on `send_report_email` instead. If they still want it, send a
+   plain-text version or attach the PDF (`references/email-layout.md` has the recipe)
+   rather than an HTML body that will be mangled.
+4. **A shared channel**, only for a single-person report or when the firm explicitly asks.
    Posting a roster's reports in one channel shows every timekeeper's hours to the others.
 
 If the only email tool creates drafts, use it: drafts in the sender's mailbox are a good
 first run, and the firm sends them by hand until they trust the output.
 
-If nothing can deliver, check whether the agent can add a connector (a connector directory
-or suggestion tool) and recommend the one that fits the firm's mail system. Only when no
-channel exists and none can be added, hand back the rendered reports and name the
-connector that would make the next run deliver itself.
+If nothing can deliver, recommend turning on `send_report_email`. If the agent can add
+connectors (a connector directory or suggestion tool), Gmail is the next best. Until one of
+those is in place, hand back the rendered reports and say which one would make the next run
+deliver itself.
 
 ### Fit the report to the channel
 
-- **Email:** send the Step 5 HTML as the message body, not as an attachment. Check the
-  tool takes an HTML body (a `contentType`, `isHtml` or `htmlBody` parameter, or similar).
-  If it only takes plain text, send a plain-text version rather than raw HTML tags.
+- **`send_report_email` and Gmail:** send the Step 5 HTML as the message body, not as an
+  attachment. For another mail tool, check it takes an HTML body (a `contentType`, `isHtml`
+  or `htmlBody` parameter, or similar). If it only takes plain text, send a plain-text
+  version rather than raw HTML tags.
 - **Slack or Teams:** neither renders an HTML email. Send a short message in the
   channel's own formatting: billable hours and value for the week and month to date, the
   year-to-date pace against goal, and the top five matters as a list. If the tool can
@@ -425,7 +473,7 @@ for it to read. Write it out in full when setting the schedule up:
 > Recipients: users whose "Employment Status" field (`618fd324-…`) is Employee or Partner.
 > Goal: the "Monthly Hourly Target" field (`a0891cf1-…`), which holds a monthly number.
 > Include week, month to date and year to date.
-> Delivery: one Outlook email per timekeeper, sent from the setup user's mailbox.
+> Delivery: one email per timekeeper through LeanLaw's send_report_email, sent as the setup user.
 > Render each report and hand them back for review; do not send.
 
 Field ids belong in the prompt alongside the names — a renamed field breaks a
@@ -439,8 +487,8 @@ reports what is missing and stops rather than guessing.
 
 Say so rather than approximating:
 
-- **Send without a delivery connector.** LeanLaw only reads data; Step 7 finds an email,
-  Slack or Teams connector to send through.
+- **Send to anyone outside the firm.** `send_report_email` reaches LeanLaw users of the
+  firm only. Reaching anyone else needs the firm's own email connector (Step 7).
 - **Create or edit a custom field.** It reads them. Adding a "Receives Weekly Time Report"
   field, or filling in a target for someone who has none, is done in LeanLaw.
 - **Report on people the connection can't see.** A roster-wide run needs a connection with
