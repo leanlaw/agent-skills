@@ -14,7 +14,7 @@ you approve. See [platform.leanlaw.co/agents](https://platform.leanlaw.co/agents
 |---|---|---|
 | `onboard-client` | Takes a new client from a signed engagement letter to a billable matter: runs a conflict pre-check, creates the client and matter, and sets up the fee arrangement, including fixed-fee installment schedules | In development |
 | `leanlaw-weekly-dashboard` | Sends each timekeeper a weekly billable hours report: hours and value for the week, month to date and year to date, their top five matters, and progress against a monthly goal, delivered Monday morning by email through LeanLaw's `send_report_email` tool, or through the agent's Gmail, Slack or Teams connector. Read-only; built to run as a weekly scheduled task | Available |
-| `missing-time-review` | Compares your calendar and sent email with the time already logged, finds work you haven't recorded, and drafts the missing entries for you to review | In development |
+| `leanlaw-missing-time-review` | Compares your calendar, sent email, and Slack or Teams messages with the time already logged, works out the client and matter for anything missing, and drafts the missing entries for you to review. Creates only the ones you approve; built to run each morning for the previous day | Available |
 
 ## How they work with your data
 
