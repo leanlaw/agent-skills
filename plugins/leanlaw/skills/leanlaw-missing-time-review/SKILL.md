@@ -30,7 +30,7 @@ install, so match on the suffix.
 | Who the attorney is, their firm, and what the connection may do | `get_me` |
 | Time already logged in the period, and recent history for matching | `list_time_entries` |
 | Finding the matter for a piece of work | `list_matters`, `get_matter` |
-| Client contact emails, for matching correspondents to clients | `list_clients`, `get_client` |
+| Finding the client an attendee or correspondent belongs to, by email address | `list_clients` (`email`) |
 | Valid LEDES codes, only if the firm's matters require them | `get_codes` |
 | **Creating the approved entries** | `create_time_entry` |
 | Optional: emailing the morning list to the attorney | `send_report_email` |
@@ -146,30 +146,28 @@ building blocks.** The rules that matter most:
 Work out the client and matter for every block yourself. Don't ask the attorney to name a
 matter first; ask only about the blocks you couldn't place.
 
-### The contact index
+### Looking people up
 
 The people on a block are the most reliable key to the client: the attendees and organizer
 of a calendar event or invite, and the To and Cc of a sent email. Titles and subjects are
 free text; an email address is not.
 
-If `list_clients` takes an `email` parameter, look each external address up with it directly,
-and each domain with `email: "@domain.com"`. Collect the run's distinct addresses first, so
-each is looked up once.
+Collect the run's distinct external addresses first, leaving out the attorney's own address
+and every address at the firm's domain. On a calendar invite **from** a client, the organizer
+counts as an attendee. Then look each one up once with `list_clients`:
 
-Otherwise its `query` matches only name and reference, so build an index once per run:
+- **By address:** `email: "jane@acme.com"`. It matches the client's contact email and CC
+  emails, ignoring case, whole addresses only.
+- **By domain**, only for an address that found nothing: `email: "@acme.com"`. Skip public
+  domains (gmail.com, outlook.com, hotmail.com, yahoo.com, icloud.com, and the like); a
+  domain match there means nothing.
 
-1. Page through `list_clients` with `select: "contact"` and `limit: 500`, until every client
-   is read. The `select` value must be exactly that; an unsupported field makes it ignored
-   and returns clients without contacts. If no client comes back with a `contact`, check the
-   `select` before concluding the firm has no contact emails.
-2. From each client's `contact`, take `email` and every address in `emailCC` (it can hold
-   several, separated by commas or semicolons). Lower-case them.
-3. Map **address → client**, and **domain → clients**, leaving out public domains (gmail.com,
-   outlook.com, hotmail.com, yahoo.com, icloud.com, and the like) and the firm's own domain.
+An address can match more than one client (a shared assistant, a parent company's general
+counsel). Keep every match and treat it as several candidates.
 
-Look up each block's external addresses in the index. Ignore the attorney's own address and
-other addresses at the firm's domain. On a calendar invite **from** a client, the organizer
-counts as an attendee.
+If `list_clients` has no `email` parameter, the connector is out of date. Skip address
+matching, place blocks with the other rules below, and say once that updating the LeanLaw
+connector would let it match people to clients.
 
 ### Matching
 
@@ -177,8 +175,8 @@ Match in this order, and stop at the first that gives a single matter:
 
 1. **A matter name or reference** in the meeting title, invite description or email subject.
    Search for it with `list_matters` (`query`), leaving out archived matters.
-2. **An attendee's or correspondent's address** exactly matches a client contact. That gives
-   the client. Then list its open matters (`list_matters` with `clientId`, `archived: false`):
+2. **An attendee's or correspondent's address** finds a client by address. That gives the
+   client. Then list its open matters (`list_matters` with `clientId`, `archived: false`):
    - **One open matter:** use it.
    - **Several:** don't guess. Ask the attorney which one, listing the client's open matters
      with the ones they logged time to recently first. A matter named in the title or
@@ -189,8 +187,8 @@ Match in this order, and stop at the first that gives a single matter:
    opposing counsel, co-counsel and experts, who are never client contacts, get placed.
 4. **The attorney's own history.** The same correspondent's name, meeting title or thread
    subject in an entry narrative in the last 60 days. Use that entry's matter.
-5. **An address's domain** matches a client contact's domain. That points at the client, not
-   a person, so it's weaker than an exact address. Pick the matter as in 2.
+5. **An address's domain** finds a client by domain. That points at the client, not a
+   person, so it's weaker than an exact address. Pick the matter as in 2.
 6. **The client name** in the title, subject or text, searched with `list_matters` (`query`).
 
 When a block has several external people who point at different clients, don't pick one;

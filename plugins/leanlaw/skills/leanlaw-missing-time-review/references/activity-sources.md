@@ -34,7 +34,7 @@ event exists.
 
 **People:** keep every attendee's email address and the organizer's, including on invites
 the attorney received from someone outside the firm. These addresses are what Step 4 looks
-up in the client contact index, and they place a meeting more reliably than its title. Read
+up against client contacts, and they place a meeting more reliably than its title. Read
 the invite description too, for a matter name, reference or dial-in title. Ignore the
 attorney's own address and other addresses at the firm's domain, except to tell internal
 meetings from client meetings: a meeting where everyone is at the firm is internal unless
