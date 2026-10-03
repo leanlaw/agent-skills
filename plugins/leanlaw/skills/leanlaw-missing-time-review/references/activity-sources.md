@@ -32,10 +32,13 @@ they say they use for work.
 meeting shorter than scheduled, use that instead. Add travel only if a separate travel
 event exists.
 
-**People:** attendees' email addresses are what Step 4 matches against client contacts.
-Ignore the attorney's own address and other addresses at the firm's domain, except to tell
-internal meetings from client meetings: a meeting where everyone is at the firm is
-internal unless the title names a client or matter.
+**People:** keep every attendee's email address and the organizer's, including on invites
+the attorney received from someone outside the firm. These addresses are what Step 4 looks
+up in the client contact index, and they place a meeting more reliably than its title. Read
+the invite description too, for a matter name, reference or dial-in title. Ignore the
+attorney's own address and other addresses at the firm's domain, except to tell internal
+meetings from client meetings: a meeting where everyone is at the firm is internal unless
+the title names a client or matter.
 
 ## Sent email
 

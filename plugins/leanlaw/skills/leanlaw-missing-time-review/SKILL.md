@@ -1,6 +1,6 @@
 ---
 name: leanlaw-missing-time-review
-description: Find work an attorney did but hasn't logged yet — by comparing their calendar, sent email, and Slack or Teams messages with the time entries already in LeanLaw — work out the client and matter for each gap, and draft the missing time entries for them to review, then create the approved ones in LeanLaw. Use when someone asks "what time am I missing", "did I log everything yesterday", "rebuild my day", "catch up my time", "find unbilled work", or wants this set up as a daily morning task. Reports only the gaps, never re-lists time already logged, and never creates an entry without the attorney's confirmation. Not for editing or approving existing entries, pre-bill review or invoicing. Requires the LeanLaw MCP connector and at least one calendar or email connector.
+description: Find work an attorney did but hasn't logged yet — by comparing their calendar, sent email, and Slack or Teams messages with the time entries already in LeanLaw — work out the client and matter for each gap, and draft the missing time entries for them to review, then create the approved ones in LeanLaw. Use when someone asks "what time am I missing", "did I log everything today" or "yesterday", "catch up my time this week", "rebuild my day", "find unbilled work", or wants this set up as a morning or end-of-day task. Picks today, yesterday, this week or last week from when it's run, and matches each meeting or email to a client and matter by looking up the attendees' and correspondents' addresses in the firm's client contacts. Reports only the gaps, never re-lists time already logged, and never creates an entry without the attorney's confirmation. Not for editing existing entries or pre-bill review. Requires the LeanLaw MCP connector and at least one calendar or email connector.
 ---
 
 # Missing time review
@@ -15,7 +15,8 @@ hours; the ones that matter here are the minority logged a week late, or never. 
 where this skill helps: it catches yesterday's call before it's forgotten, which raises
 utilization and leaves less for the pre-bill to write down.
 
-It runs each morning for the previous working day, or on demand for a longer range.
+It reviews today, yesterday, this week or last week, depending on when it's run (Step 1),
+or any range the attorney names.
 
 ## Tools
 
@@ -67,13 +68,40 @@ email will miss the work done in email, and the attorney should know that before
 
 ## Step 1: The period
 
-- **Default:** the previous working day. On a Monday, that's Friday through Sunday, so
-  weekend work is caught too.
-- **On request:** any range the attorney names, such as "last week" or "since the 1st". Above
-  about two weeks, warn that the review gets long, and offer to go a week at a time.
-- Use the attorney's own time zone for day boundaries, from their calendar settings if the
-  connector exposes them, otherwise ask once. An 11pm call belongs to the day it happened
-  where they are, not to the next day in UTC.
+If the attorney named a period ("yesterday", "last week", "since the 1st"), use it. Otherwise
+pick a recommended period from when the skill is run, in the attorney's local time:
+
+| Run at | Recommend | Why |
+|---|---|---|
+| Monday before noon | **Last week**, Monday to Sunday | The week is fresh, weekend work is included, and this week has barely started |
+| Any other day before 10:00 | **Yesterday**, the previous working day | The morning catch-up, before today's work buries it |
+| From 16:00 | **Today**, up to now | The end-of-day check, while the day is still in their head |
+| Any other time | **This week**, Monday up to now | A mid-day or mid-week catch-up |
+
+Then offer it as a choice rather than starting on it. Recommend that period first, then the
+nearest whole-day and whole-week alternatives, then a custom range, in one question:
+
+```
+Which period should I check?
+  1. Yesterday, Thu 2 Oct (recommended)
+  2. Today so far, Fri 3 Oct
+  3. This week so far, Mon 29 Sep – Fri 3 Oct
+  4. A different range — tell me the dates
+```
+
+- Keep to days and weeks. A custom range is the last option, for when the attorney already
+  knows the dates.
+- "Yesterday" means the previous working day. If that day had no calendar events and no sent
+  mail, say so and offer the day before.
+- **Today** and **this week** stop at the time the skill is run. Events still to come aren't
+  work yet; leave them out, and don't propose time for a meeting that hasn't ended.
+- Above about two weeks, warn that the review gets long, and offer to go a week at a time.
+- A **scheduled run** doesn't ask. It uses the period its prompt names (see "Running it on a
+  schedule").
+- Use the attorney's own time zone, both for choosing the recommendation and for day
+  boundaries. Take it from their calendar settings if the connector exposes them, otherwise
+  ask once. An 11pm call belongs to the day it happened where they are, not to the next day in
+  UTC.
 
 ## Step 2: What's already logged
 
@@ -86,6 +114,10 @@ Then read a **history** of the attorney's entries for the 60 days before the per
 same way. The history is what Step 4 learns from: which matters this attorney actually
 works on, and how they phrase their narratives. Keep `date`, `matter`, `client`, `hours`,
 `billingType` and `description`. Nothing else is needed.
+
+If a calendar is connected, read its events for the same 60 days too, keeping only events
+with someone outside the firm: date, title and attendee addresses. Step 4 lines these up with
+the history to place people who aren't client contacts.
 
 ## Step 3: What they actually did
 
@@ -114,23 +146,66 @@ building blocks.** The rules that matter most:
 Work out the client and matter for every block yourself. Don't ask the attorney to name a
 matter first; ask only about the blocks you couldn't place.
 
+### The contact index
+
+The people on a block are the most reliable key to the client: the attendees and organizer
+of a calendar event or invite, and the To and Cc of a sent email. Titles and subjects are
+free text; an email address is not.
+
+If `list_clients` takes an `email` parameter, look each external address up with it directly,
+and each domain with `email: "@domain.com"`. Collect the run's distinct addresses first, so
+each is looked up once.
+
+Otherwise its `query` matches only name and reference, so build an index once per run:
+
+1. Page through `list_clients` with `select: "contact"` and `limit: 500`, until every client
+   is read. The `select` value must be exactly that; an unsupported field makes it ignored
+   and returns clients without contacts. If no client comes back with a `contact`, check the
+   `select` before concluding the firm has no contact emails.
+2. From each client's `contact`, take `email` and every address in `emailCC` (it can hold
+   several, separated by commas or semicolons). Lower-case them.
+3. Map **address → client**, and **domain → clients**, leaving out public domains (gmail.com,
+   outlook.com, hotmail.com, yahoo.com, icloud.com, and the like) and the firm's own domain.
+
+Look up each block's external addresses in the index. Ignore the attorney's own address and
+other addresses at the firm's domain. On a calendar invite **from** a client, the organizer
+counts as an attendee.
+
+### Matching
+
 Match in this order, and stop at the first that gives a single matter:
 
-1. **The attorney's own history.** The same correspondent, meeting title or thread subject
-   on an entry in the last 60 days is the strongest signal there is. Use that entry's
-   matter.
-2. **A matter name or reference** in the meeting title or email subject. Search for it with
-   `list_matters` (`query`), leaving out archived matters.
-3. **The correspondent's email** against client contact emails from `list_clients`. Match
-   the full address first, then the domain, but never a public domain such as gmail.com or
-   outlook.com. A client match narrows the matter down; it doesn't pick one, unless that
-   client has only one open matter or the attorney's history uses only one.
-4. **The client name** in the title, subject or text, searched with `list_matters` (`query`).
+1. **A matter name or reference** in the meeting title, invite description or email subject.
+   Search for it with `list_matters` (`query`), leaving out archived matters.
+2. **An attendee's or correspondent's address** exactly matches a client contact. That gives
+   the client. Then list its open matters (`list_matters` with `clientId`, `archived: false`):
+   - **One open matter:** use it.
+   - **Several:** don't guess. Ask the attorney which one, listing the client's open matters
+     with the ones they logged time to recently first. A matter named in the title or
+     subject would already have been placed by 1.
+3. **The same people, logged before.** Earlier calendar events in the 60-day history window
+   with the same external attendees, on days when the attorney logged an entry whose
+   narrative names those people or that meeting. Use that entry's matter. This is how
+   opposing counsel, co-counsel and experts, who are never client contacts, get placed.
+4. **The attorney's own history.** The same correspondent's name, meeting title or thread
+   subject in an entry narrative in the last 60 days. Use that entry's matter.
+5. **An address's domain** matches a client contact's domain. That points at the client, not
+   a person, so it's weaker than an exact address. Pick the matter as in 2.
+6. **The client name** in the title, subject or text, searched with `list_matters` (`query`).
+
+When a block has several external people who point at different clients, don't pick one;
+show the candidates.
+
+If an exact address match placed a block the attorney then corrects, or a person matched
+only by domain or history, mention once at the end that adding that address to the client's
+contact in LeanLaw would let future runs match it directly. The skill doesn't change client
+records itself.
 
 Give every block a confidence:
 
-- **High:** a history match, or an exact matter reference.
-- **Medium:** one client, and one obvious matter for that attorney.
+- **High:** an exact matter reference; an exact address match to a client with one open
+  matter; or a history match on the same people.
+- **Medium:** one client from a domain match, with only one open matter.
 - **Low:** several candidate matters, or a guess from a name. Show the top two or three
   candidates and let the attorney pick.
 - **None:** no match. Ask, or leave it out.
@@ -251,7 +326,7 @@ Report what was created: one line per entry with its matter, hours and the total
 that failed with the reason. Created entries are ordinary unbilled time in LeanLaw: the
 attorney can edit or delete any of them there until they're billed.
 
-## Running it every morning
+## Running it on a schedule
 
 Offer to schedule it once the attorney has been through one review and is happy with how
 it places matters. A schedule set up before that produces a morning list nobody trusts.
@@ -261,14 +336,16 @@ confirmed by the attorney, every time.
 
 The scheduled prompt carries the whole setup. Write it out when creating the task:
 
-> Run the missing time review for my previous working day.
+> Run the missing time review. Period: my previous working day, or last week when it runs on
+> a Monday.
 > Time zone: America/Denver.
 > Sources: Google Calendar, Gmail sent mail, Slack.
 > Prepare the proposals and stop for my review; do not create any entries.
 > Also email me the list through LeanLaw's send_report_email.
 
 If the agent supports scheduled tasks, create it with this prompt, at a time before the
-attorney's day starts. If it doesn't, say so and give them the prompt to schedule
+attorney's day starts. An end-of-day schedule works too: set the period to today, and run it
+late in the afternoon. If it doesn't, say so and give them the prompt to schedule
 elsewhere.
 
 **Emailing the list** is optional, and useful when the scheduled run happens somewhere the
