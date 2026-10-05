@@ -116,7 +116,8 @@ results in the same report format.
 
 The Step 2 searches already answer this. Classify:
 
-- **Clear match** — an existing client with this name or reference. Show it (name, reference,
+- **Clear match** — an existing client with this name or reference, or whose contact email is
+  the client's address from the letter. Show it (name, reference,
   open matters) and confirm that the new matter goes under it. This is common: an existing client
   with a new engagement. No `create_client`.
 - **Possible matches** — list them with what distinguishes them, and ask. Never merge, and never

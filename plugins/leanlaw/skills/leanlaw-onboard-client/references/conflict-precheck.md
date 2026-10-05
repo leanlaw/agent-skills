@@ -30,6 +30,17 @@ can be a conflict.
 - `list_matters` with `query` and no `archived` filter — matches matter name, client name, matter
   reference and client reference, so it also finds a party named in a matter title such as
   "Ames v. Riverbend".
+- `list_clients` with `email`, for every party whose email address the letter gives — matches a
+  client's contact email and CC addresses. This finds an existing client recorded under a
+  different name: the same person behind a new entity, or an estate whose personal
+  representative was a client before. Search the full address first. If it finds nothing and the
+  domain isn't a public one (gmail.com, outlook.com, yahoo.com, icloud.com and the like) or the
+  firm's own, search the domain too, as `email: "@riverbend.example"`. A domain hit points at an
+  organization, not a person, so list it as name similarity unless the reviewer says otherwise.
+
+  To confirm the filter is applied, an address that can't exist, such as
+  `email: "nobody@example.invalid"`, must return no clients. If it returns clients, the filter
+  was ignored, and an email search that "found" a client means nothing.
 
 `query` is a substring match, so search the **distinctive part** of a name, not the whole string:
 
@@ -71,7 +82,8 @@ Run 2026-10-01 by Dana Whitfield via the LeanLaw connector
 Parties searched
   Client          Riverbend Holdings LLC      terms: "Riverbend"
   Affiliate       Riverbend Capital LP        terms: "Riverbend"
-  Principal       Jordan Ames                 terms: "Ames", "Jordan Ames"
+  Principal       Jordan Ames                 terms: "Ames", "Jordan Ames",
+                                              jordan@riverbend.example, @riverbend.example
   Adverse         Northgate Ventures          terms: "Northgate"
 
 Hits to review (2)
