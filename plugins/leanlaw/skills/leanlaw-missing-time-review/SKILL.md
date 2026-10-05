@@ -29,6 +29,7 @@ install, so match on the suffix.
 |---|---|
 | Who the attorney is, their firm, and what the connection may do | `get_me` |
 | Time already logged in the period, and recent history for matching | `list_time_entries` |
+| Totals for the usual-week comparison | `summarize_time_entries` |
 | Finding the matter for a piece of work | `list_matters`, `get_matter` |
 | Finding the client an attendee or correspondent belongs to, by email address | `list_clients` (`email`) |
 | Valid LEDES codes, only if the firm's matters require them | `get_codes` |
@@ -66,7 +67,7 @@ Then list which activity sources are connected, and say which are missing. A run
 email will miss the work done in email, and the attorney should know that before trusting
 "no gaps found".
 
-## Step 1: The period
+## Step 1: The period, and which time to look for
 
 If the attorney named a period ("yesterday", "last week", "since the 1st"), use it. Otherwise
 pick a recommended period from when the skill is run, in the attorney's local time:
@@ -79,7 +80,13 @@ pick a recommended period from when the skill is run, in the attorney's local ti
 | Any other time | **This week**, Monday up to now | A mid-day or mid-week catch-up |
 
 Then offer it as a choice rather than starting on it. Recommend that period first, then the
-nearest whole-day and whole-week alternatives, then a custom range, in one question:
+nearest whole-day and whole-week alternatives, then a custom range.
+
+In the same message, ask whether to look for **non-billable time** too. Some attorneys track
+every internal meeting; others only care that billable work gets in, and a list of firm
+meetings and admin is noise to them. Recommend from their own habit: make one
+`summarize_time_entries` call over the last 8 weeks, and if non-billable time is under 10% of
+their hours, recommend billable only. Ask both together:
 
 ```
 Which period should I check?
@@ -87,7 +94,22 @@ Which period should I check?
   2. Today so far, Fri 3 Oct
   3. This week so far, Mon 29 Sep – Fri 3 Oct
   4. A different range — tell me the dates
+
+Which time should I look for?
+  a. Billable and non-billable, including internal meetings and admin (recommended: 30% of
+     your time over the last 8 weeks was non-billable)
+  b. Billable only
 ```
+
+With **billable only**:
+
+- Internal and admin work isn't proposed. List it as one line under "Not proposed" ("9
+  internal meetings, 6.5h, not proposed: billable only"), not row by row.
+- It still counts as the attorney's time in Step 7: a morning of firm meetings isn't a quiet
+  stretch.
+- The Step 7 comparison uses billable hours only, and skips the billable-mix check.
+
+Ask once per conversation. A scheduled run doesn't ask; its prompt says which.
 
 - Keep to days and weeks. A custom range is the last option, for when the attorney already
   knows the dates.
@@ -140,6 +162,9 @@ building blocks.** The rules that matter most:
 - **Merge before you estimate.** Six emails in one thread on one afternoon are one block,
   not six. A call and the follow-up email on the same matter are two blocks on one
   matter.
+- **Keep the times.** Merging a thread into one block keeps the send time of every message
+  in it, and every meeting keeps its start and end. Step 7 uses them to find the parts of
+  the day with no trace at all.
 
 ## Step 4: Which client and matter
 
@@ -165,9 +190,11 @@ counts as an attendee. Then look each one up once with `list_clients`:
 An address can match more than one client (a shared assistant, a parent company's general
 counsel). Keep every match and treat it as several candidates.
 
-If `list_clients` has no `email` parameter, the connector is out of date. Skip address
-matching, place blocks with the other rules below, and say once that updating the LeanLaw
-connector would let it match people to clients.
+Don't decide from the tool's schema whether `email` is supported: an agent can hold an older
+copy of the tool definition than the server runs. Probe once per run instead, with
+`email: "nobody@example.invalid"`. Zero results means the filter works. Clients coming back
+means the server ignored it: skip address matching, place blocks with the other rules below,
+and say once that updating the LeanLaw connector would let it match people to clients.
 
 ### Matching
 
@@ -209,10 +236,10 @@ Give every block a confidence:
 - **None:** no match. Ask, or leave it out.
 
 **Internal and admin work** — firm meetings, training, business development, recruiting,
-admin — goes on the firm's internal matter, the one whose `matterType` is `internal`, and
-is non-billable. If the firm has several internal matters, use the one the attorney's
-history uses for that kind of work. If it has none, list the block as unplaced; don't put
-internal work on a client matter.
+admin — is non-billable, and goes on the matter the attorney's history uses for that kind of
+work, whatever its `matterType`. Firms often keep an hourly "Administrative" matter for this.
+With no history to go on, use a matter whose `matterType` is `internal`. If there's none,
+list the block as unplaced; don't put internal work on a client matter.
 
 Never invent a matter. If no matter fits, the block is unplaced, and creating a matter is
 outside this skill.
@@ -250,6 +277,11 @@ One proposed entry per remaining block. Each one has:
 **Increments.** Use the increment the attorney's history shows: if every entry is a
 multiple of 0.1, the increment is 0.1. If unclear, use 0.1. Never round a block to zero.
 
+**Add up before rounding.** Blocks on the same matter on the same day that are each
+shorter than one increment become one entry: add their estimates, then round the total once.
+Three 0.1 emails at a 0.25 increment are one 0.5 entry, not three 0.25 entries that bill
+0.75 for 0.3 of work.
+
 **Narratives.** Write in the attorney's own style, judged from their history: the same
 tense, the same level of detail, the same way of naming people. In general:
 
@@ -267,7 +299,96 @@ in use. Take the codes from that history or from `get_codes`; don't guess codes.
 
 Don't set a rate. The matter and the attorney's rate apply.
 
-## Step 7: Review with the attorney
+## Step 7: Compare with a usual week, and find quiet stretches
+
+Gaps show up in the totals before they show up in a calendar. Work that left no trace in
+any source (drafting, research, a phone call) is invisible to Steps 3–5, but it still makes
+a week look light next to the attorney's usual one. So compare the period, with the proposed
+entries counted in, against the attorney's own recent weeks.
+
+Make one `summarize_time_entries` call for the attorney (`userId` from `get_me`):
+
+- One range per complete week (Monday to Sunday) for the **8 weeks** before the period.
+- One range per day of the period.
+- `groupBy: [{ "by": "matter" }]`, so each range also says which matters had time.
+
+Never build these totals from `list_time_entries` rows. They're paged and truncated.
+
+**The usual week** is the median of those 8 weeks for total, billable and non-billable
+hours, and the billable share of total. Leave out weeks with almost no time (vacation, a
+conference), and say how many were left out. With fewer than 4 usable weeks, skip the
+comparison and say there isn't enough history yet.
+
+Then look for differences, counting the period's logged time plus the proposals:
+
+| Check | Flag when |
+|---|---|
+| **Total** | the week is more than 20% below the usual week |
+| **Billable mix** | the billable share is more than 15 points from usual. A week of meetings and no billable time is the classic sign of drafting that never got logged |
+| **A light day** | a working day has less than half a usual day (the usual week ÷ the days the attorney usually works) |
+| **A quiet matter** | a matter with time in at least 6 of the 8 weeks has none this week, logged or proposed |
+
+For a period shorter than a week, check only the light day and the quiet matter. For a
+period still in progress, such as this week so far, compare it with the same days of the
+usual week, not with a whole week.
+
+**These are prompts, not entries.** Nothing here proposes time on its own: the skill has
+seen no work, only a number lower than usual. Put the flags under the proposals in Step 8,
+in plain words, and let the attorney say what it was:
+
+```
+Compared with your usual week (median of the last 8)
+ - 22.5h this week with the proposals, against a usual 31h.
+ - 34% billable, against a usual 68%. Mostly meetings this week.
+ - Thu 17 Sep: 1.5h, against a usual 6h a day.
+ - Ruiz v. Acme: no time this week. Usually 6h a week.
+```
+
+If the attorney says what the missing time was, draft it as an entry like any other, with
+the source "Attorney" and their words as the starting point for the narrative. Never
+invent the work to fill a gap. A light week can be exactly that.
+
+If nothing differs, say so in one line.
+
+### Quiet stretches
+
+A light day says time is missing; a quiet stretch says when. For each working day in the
+period, lay out everything that places the attorney at work, in their time zone:
+
+- every meeting they attended, internal ones included, from start to end;
+- work-titled solo calendar blocks, and out-of-office, holiday or personal events;
+- the send time of every email they wrote;
+- LeanLaw entries that carry a real start `time`. Entries are often stamped with the time
+  they were *logged*: when several entries on a day share a time within a few minutes, they
+  were entered as a batch, so ignore their times and count only their hours.
+
+A **quiet stretch** is 2 hours or more inside the working day with none of these. The
+working day is the attorney's working hours from their calendar settings if the connector
+exposes them, otherwise 8:00 to 17:00. Time covered by an out-of-office or personal event
+isn't quiet; the attorney was away, and the skill doesn't say why. A working day with no trace at all and no time in LeanLaw is one quiet stretch, the
+whole day, unless the calendar shows them out.
+
+**Chat doesn't end a stretch.** Most attorneys send Slack or Teams messages all day, a line
+here and there between other work, so counting them would hide every gap. Instead, say how
+many messages fell inside the stretch and what they were about, if one names a client or
+matter: that's often the best hint at what the time was.
+
+Quiet stretches need no history, so check them even when the usual-week comparison was
+skipped. They are prompts like the rest of this step, never entries: a quiet morning can
+be focused drafting or a dentist appointment, and only the attorney knows which. List them
+with the day's total, so the attorney can see whether the day already adds up:
+
+```
+Quiet stretches (no meetings, email, messages or LeanLaw time)
+ - Wed 16 Sep, 10:15–13:05 (2.8h). 7 Slack messages, none about a client. Day total
+   with the proposals: 3.0h.
+ - Fri 19 Sep, all day. Nothing in the calendar, mail or LeanLaw.
+```
+
+If the attorney says what they were doing, draft it as an entry like any other, with the
+source "Attorney".
+
+## Step 8: Review with the attorney
 
 Show the proposals as one table, oldest first:
 
@@ -300,7 +421,7 @@ If nothing is missing, say so in one line, with what was checked: "Nothing missi
 13 Oct. 6 meetings and 14 sent emails, all covered by your 7.4h logged." A clean result
 is the outcome the attorney wants most days.
 
-## Step 8: Create the approved entries
+## Step 9: Create the approved entries
 
 Immediately before creating, read the period's entries again with `list_time_entries`.
 If the attorney logged something themselves in the meantime that now covers a proposal,
@@ -337,6 +458,7 @@ The scheduled prompt carries the whole setup. Write it out when creating the tas
 > Run the missing time review. Period: my previous working day, or last week when it runs on
 > a Monday.
 > Time zone: America/Denver.
+> Look for: billable time only.
 > Sources: Google Calendar, Gmail sent mail, Slack.
 > Prepare the proposals and stop for my review; do not create any entries.
 > Also email me the list through LeanLaw's send_report_email.
@@ -367,7 +489,7 @@ Say so rather than approximating:
   them in LeanLaw.
 - **Create a client or matter.** Work with no matter is listed as unplaced.
 - **See work that left no trace** in a connected source: a hallway conversation, an
-  unscheduled phone call, drafting with no email after it. Say this when the attorney
-  asks why something was missed, and suggest they add it by hand.
+  unscheduled phone call, drafting with no email after it. Step 7 flags the week or day that
+  looks light because of it, but only the attorney can say what the work was.
 - **Phone call logs, document edits and billing-platform activity** are not read, even if a
   connector for them exists.
