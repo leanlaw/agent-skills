@@ -15,7 +15,10 @@ browser engine. That single fact rules out most modern HTML:
 | CSS variables, `flex`, `grid` | Not supported | Tables for all layout |
 | Google Fonts, webfonts | Never load; falls back to something arbitrary | Georgia, Arial, Courier New |
 | Background images | Unreliable | Background colors on `<td>` |
+| `background-color` alone | Can be lost before or in Word | `bgcolor="#hex"` attribute too, same color |
+| `rgb()`, `rgba()`, color names | `rgba()` drops the whole rule | Six-digit hex only |
 | `<div>` for columns | Collapses | `<td>` for columns |
+| `padding` on a `<div>` | Ignored | `<p style="margin:…">`, or padding on the `<td>` |
 
 Write the mail body as a table of tables. It looks dated as source and it is the only
 thing that renders the same in Outlook, Gmail and Apple Mail.
@@ -94,8 +97,8 @@ means the goal was met — the goal reads without needing an axis or a separate 
 <tr>
   <td width="34" style="width:34px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#4a5666;padding:3px 0;">Mar</td>
   <td style="padding:3px 8px;">
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;background-color:#e8ecf1;"><tr>
-      <td width="100%" style="width:100%;background-color:#2e7d5b;font-size:0;line-height:0;height:13px;">&nbsp;</td>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" bgcolor="#e8ecf1" style="border-collapse:collapse;background-color:#e8ecf1;"><tr>
+      <td width="100%" bgcolor="#2e7d5b" height="13" style="width:100%;background-color:#2e7d5b;font-size:1px;line-height:1px;height:13px;">&nbsp;</td>
     </tr></table>
   </td>
   <td width="62" align="right" style="width:62px;font-family:'Courier New',Courier,monospace;font-size:12px;color:#151c26;padding:3px 0;white-space:nowrap;">151.2</td>
@@ -110,8 +113,11 @@ Rules:
   to hold the remaining track.
 - The current, partial month is `#9db4d6` so nobody reads a short bar as a bad month.
 - Months with no time yet: no bar cell, track `#f0f3f6`, an em dash in the figure column.
-- `font-size:0;line-height:0;height:13px;` with a `&nbsp;` is what keeps an empty cell
-  from collapsing in Outlook. The `&nbsp;` is load-bearing.
+- `height="13"` plus `font-size:1px;line-height:1px;height:13px;` with a `&nbsp;` is what
+  keeps a bar cell from collapsing in Outlook. The attribute and the `&nbsp;` are
+  load-bearing; `font-size:0` collapses the cell.
+- Every colored cell, and the track table, carries `bgcolor` with the same hex as its
+  `background-color`. Without it Outlook draws an empty chart.
 - With no goal configured, scale bars to the largest month instead and say so in the
   caption, or drop the chart.
 
@@ -146,7 +152,11 @@ grep -c '<svg'            → 0
 grep -c 'var(--'          → 0
 grep -cE 'display:(flex|grid)' → 0
 grep -c 'class='          → 0
+grep -ciE 'rgba?\('       → 0
+grep -c '<div style="[^"]*padding' → 0
 ```
+
+And every `background-color:#…` sits on an element that also has `bgcolor="#…"`.
 
 Then send one to yourself in the real client. A browser preview does not tell you what
 Outlook will do.

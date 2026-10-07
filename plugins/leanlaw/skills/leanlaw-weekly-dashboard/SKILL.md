@@ -284,6 +284,9 @@ opens the mail:
   leaving a blank gap where the chart was. The bar chart is nested HTML tables with
   background colors on table cells.
 - **No CSS classes, variables, flex or grid.** Every style is inline on the element.
+- **Hex colors, with `bgcolor` beside every background.** Word drops any rule using
+  `rgb()`/`rgba()`, and it ignores padding on a `<div>`; use a `<p>` margin or `<td>`
+  padding instead.
 
 Check contrast before sending. Grey text under about 4.5:1 against white is hard to read
 on screen and worse in print; the layout file gives the values to use.
