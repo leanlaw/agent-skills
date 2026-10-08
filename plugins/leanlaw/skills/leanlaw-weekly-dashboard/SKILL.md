@@ -378,7 +378,7 @@ Call it once per timekeeper:
 | `reportName` | `weekly-billable-hours` |
 
 It can only reach **users of the firm**, and a firm can email at most **200 recipients a
-day**, with no more than **10 emails to one person a day**. A roster report fits easily,
+day**, with no more than **50 emails to one person a day** (both reset at midnight UTC). A roster report fits easily,
 but a run that is retried over and over won't. If it returns a limit error, stop and report
 it rather than switching channels.
 
