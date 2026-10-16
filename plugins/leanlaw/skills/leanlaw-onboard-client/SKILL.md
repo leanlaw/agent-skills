@@ -31,7 +31,8 @@ connector adds its own prefix, which differs per install, so match on the suffix
 | Who the connection is, which firm, what it may do | `get_me` |
 | The attorney roster | `list_users` |
 | Practice areas | `list_practice_areas` |
-| Conflict pre-check and duplicate check | `list_clients`, `get_client`, `list_matters`, `get_matter` |
+| Conflict pre-check | `check_conflicts`, falling back to `list_clients` and `list_matters` |
+| Duplicate check, and detail on a hit | `list_clients`, `get_client`, `list_matters`, `get_matter` |
 | Create the client | `create_client` |
 | Create the matter | `create_matter` |
 | Fixed-fee installments | `create_fixed_fee`, `list_fixed_fees` |
@@ -66,7 +67,8 @@ If the LeanLaw connector isn't available, say so and stop.
 Run these together, once, before reading the letter:
 
 - `get_me` — the user and firm the connection acts as, and its granted scopes. The run needs to
-  read users, clients and matters, and to create clients, matters and fixed fees. If a create
+  read users, clients and matters (which includes `check_conflicts`), and to create clients,
+  matters and fixed fees. If a create
   scope is missing, name it and say the run can still do the extraction and the conflict
   pre-check, but a firm admin must grant the scope (Settings → Agent Access in LeanLaw) and the
   user must reconnect before anything can be created.
@@ -107,8 +109,9 @@ Present the report and ask the user to confirm that the firm's conflict process 
 that onboarding should go ahead. If they say no, or want to wait for the firm's conflict review,
 stop there: nothing has been created, and the report is the output.
 
-If the connector offers a conflict-check tool, use it in place of the name search and present its
-results in the same report format.
+Use `check_conflicts` for the search when the connector offers it. It checks every client and
+matter in the firm, including the conflict information on other matters. The list-tool search is
+the fallback.
 
 ## Step 3: Plan the client and the matter
 
@@ -244,8 +247,9 @@ can't be built, offer `https://myleanlaw.co` instead of guessing at another rout
 Say so rather than approximating:
 
 - **Clear conflicts, or record a conflict check in LeanLaw.** The pre-check is a name search
-  across clients and matters. It doesn't search contacts, the conflict information on other
-  matters, or anything outside LeanLaw, and it doesn't write a conflict record.
+  across clients and matters. It doesn't search time-entry narratives or anything outside
+  LeanLaw, and it doesn't write a conflict record. Without `check_conflicts` it also misses the
+  conflict information on other matters.
 - **Set rates or rate groups.** Hourly rates are configured in LeanLaw.
 - **Take a trust or retainer deposit**, or set a trust requirement.
 - **Split origination** across several attorneys, or set per-matter compensation.
