@@ -49,8 +49,7 @@ Then, for every party whose email address the letter gives, also run `list_clien
 
 ### Without it
 
-If the connector has no `check_conflicts`, usually because the connection lacks the
-`read:conflict-checks` permission, say so and fall back to the list tools. For each party, search
+If the connector has no `check_conflicts`, say so and fall back to the list tools. For each party, search
 both clients and matters, **including archived matters**: a former client can be a conflict.
 
 - `list_clients` with `query` — matches client name or reference.

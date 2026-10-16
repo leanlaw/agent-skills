@@ -67,9 +67,8 @@ If the LeanLaw connector isn't available, say so and stop.
 Run these together, once, before reading the letter:
 
 - `get_me` — the user and firm the connection acts as, and its granted scopes. The run needs to
-  read users, clients and matters, run conflict checks (`read:conflict-checks`), and create
-  clients, matters and fixed fees. Without `read:conflict-checks` the pre-check falls back to a
-  narrower name search; say so. If a create
+  read users, clients and matters (which includes `check_conflicts`), and to create clients,
+  matters and fixed fees. If a create
   scope is missing, name it and say the run can still do the extraction and the conflict
   pre-check, but a firm admin must grant the scope (Settings → Agent Access in LeanLaw) and the
   user must reconnect before anything can be created.
