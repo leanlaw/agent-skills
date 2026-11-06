@@ -57,9 +57,12 @@ This job changes what clients are billed, so:
 
 - **The fee:** `list_fixed_fees(filter: { clientId or matterId, billed: false })`. If more than one unbilled fee fits the period, ask which one.
 - **The fee's time:** `list_time_entries(filter: { fixedFeeId, limit: 500 })`, without a `billed` filter.
+  - If the role isn't `operator` or `accountant`, add each attorney's `userId` from step 1, or the list holds only your own time.
   - If any linked entry is already billed, stop and ask. Some included hours were used on an earlier invoice, which fixes part of the order.
   - The unbilled `fixedFee` entries are the working set.
-- **Unlinked time:** `list_time_entries(filter: { matterId, billingType: "fixedFee", billed: false })`, keeping the entries with no `fixedFeeId`. Report them; they don't count yet.
+- **Unlinked time:** `list_time_entries(filter: { matterId, billingType: "fixedFee", billed: false })`, keeping the entries with no `fixedFeeId`.
+  - If the fee has a `limitHours` and it's the matter's only fee with a limit, LeanLaw counts this time toward the limit when the invoice is drafted. Stop and ask the user to link it to the right fee, or make it billable, before you continue. Otherwise the draft adds a second overage line at the fee's limit rate.
+  - If not, report it; it doesn't count toward this fee.
 - **Rates:**
   - **Preferred:** each fixed-fee entry's `rate`, as returned by `list_time_entries`.
   - **Otherwise:** a rate table for the client from the user (for example "Jordan 250, Sam 275, Riley 350").
@@ -82,7 +85,7 @@ Walk the sorted list with a running total of hours:
   - Included portion = included hours − hours before this entry.
   - Overage portion = the rest.
 
-**Estimated overage amount** = overage hours × rate, rounded to cents.
+**Estimated overage amount:** round each entry's hours × rate to cents, then add them up.
 
 If total hours are at or under the included hours, there's nothing to bill. Say so and move to the next client.
 
@@ -101,7 +104,7 @@ Changes
   Convert to billable + detach:  7 entries
   Split:                         1 entry (Jordan Lee 11/12, 2.0 h → 0.5 included / 1.5 overage)
 
-Not counted (fixed-fee time not linked to any fee): 3 entries, 4.2 h
+Not linked to any fee (doesn't count toward this fee): 3 entries, 4.2 h
 ```
 
 Ask: "Apply these changes for [clients]?" Wait for a clear yes.
@@ -119,17 +122,21 @@ update_time_entry(id, { billingType: "billable",
 ```
 
 **Split entry.** This keeps the original stored rate on the overage portion, so no rate is typed in:
-1. Convert and detach the original entry, as above.
-2. Set its hours to the overage portion: `update_time_entry(id, { hours: <overage> })`.
-3. Create the included portion back on the fee: `create_time_entry({ matterId, userId, date, time, description, hours: <included>, billingType: "fixedFee", fixedFeeId })`.
+1. Create the included portion on the fee: `create_time_entry({ matterId, userId, date, time, description, hours: <included>, billingType: "fixedFee", fixedFeeId })`.
    - Copy the original's attorney, date, **time** and description.
    - Without `time`, the new entry is stamped with the current time.
+2. Convert the original to the overage portion in one call:
+   ```
+   update_time_entry(id, { billingType: "billable",
+                           fixedFeeId: "00000000-0000-0000-0000-000000000000",
+                           hours: <overage> })
+   ```
 
 If the firm requires hours in fixed increments and the split doesn't land on one, stop **before writing** and ask whether to round the included portion up or down.
 
 ### 6. Monitor: check each write as it lands
 
-After each call, confirm all three:
+After each `update_time_entry`, confirm all three (for a created included portion, confirm it's `fixedFee` and linked to the fee):
 
 - `billingType` is `billable`;
 - the response has **no `fixedFeeId`**;
@@ -137,15 +144,17 @@ After each call, confirm all three:
 
 If a link is still present, or the rate differs, stop. Report what changed and what didn't.
 
-When all writes are done, run the same `summarize_time_entries` call on the matter and confirm all three:
+When all writes are done, confirm all three:
 
-- `fixedFeeHours` equals the included hours (or less, if there was no overage for that part);
-- `billableHours` and `billableAmount` went up by exactly the overage hours and dollars in the preview;
+- the hours still linked to the fee (`list_time_entries(filter: { fixedFeeId })`) add up to the included hours;
+- in the same `summarize_time_entries` call on the matter, `billableHours` went up by exactly the overage hours in the preview, and `billableAmount` by the overage dollars (`billableAmount` needs the read-rates permission; without it, check hours only);
 - `totalHours` is unchanged, which shows no time was lost or duplicated by a split.
 
 ### 7. Modify: when something goes wrong
 
-- **A call failed partway through:** report exactly what changed. Re-running is safe, because converted entries leave the working set.
+- **A call failed partway through:** report exactly what changed.
+  - A converted entry leaves the working set, so re-running is safe after a failed conversion.
+  - A split that stopped between its two calls is not safe to re-run: the included portion exists, but the original is still whole on the fee. Fix that entry by hand (delete the new entry, or finish the update), then re-run.
 - **A rate came back different from the table:** the order may be wrong. Show the corrected order and ask before continuing.
 - **The user wants to undo,** before anything is invoiced:
   - set each converted entry back to `billingType: "fixedFee"` with its original `fixedFeeId`;
@@ -166,5 +175,5 @@ Next step for the user: create the drafts as usual. The monthly fee bills on its
 
 - **Fall back to the user when the connector doesn't provide them.** If the connector doesn't return `limitHours` or entry `rate`, or the fee has no limit set, the user supplies the included hours and the rates. The order is then only as good as their rate table; the billed amount isn't affected.
 - **The connector can't set or change a fee's hour limit** (`create_fixed_fee` / `update_fixed_fee` have no limit fields). Set it in LeanLaw.
-- **Run this job before drafting.** If a fee has an hour limit in LeanLaw and the invoice is drafted while its linked hours exceed that limit, LeanLaw bills the overage as one line at the fee's limit rate, not at each attorney's rate.
+- **Run this job before drafting.** If a fee has an hour limit in LeanLaw and the invoice is drafted while its hours exceed that limit, LeanLaw bills the overage as one line at the fee's limit rate, not at each attorney's rate. Those hours are the fee's linked time, plus the matter's unlinked fixed-fee time when it's the matter's only fee with a limit.
 - **Invoice line items can't be read through the connector.** Check the draft in LeanLaw after creating it.
