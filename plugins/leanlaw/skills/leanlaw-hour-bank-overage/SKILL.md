@@ -103,7 +103,6 @@ Overage by attorney
 Changes
   Convert to billable + detach:  7 entries
   Split:                         1 entry (Jordan Lee 11/12, 2.0 h → 0.5 included / 1.5 overage)
-
 ```
 
 Ask: "Apply these changes for [clients]?" Wait for a clear yes.
