@@ -46,6 +46,7 @@ This job changes what clients are billed, so:
 - Call `get_me`. If the role isn't `operator` or `accountant`, `list_time_entries` returns only the user's own time.
   - First find who worked on the matter: `summarize_time_entries({ matterId, allUsers: true, groupBy: [{ by: "user" }], ranges: [<wide range>] })`.
   - Then list each of those attorneys' time with `userId`. This avoids querying every user at the firm.
+  - This applies to **every** `list_time_entries` call in this skill, including the checks in step 6.
 - Confirm which subscription clients are being billed this cycle.
 - **Included hours:**
   - **Preferred:** the fee's `limitHours`.
@@ -57,12 +58,11 @@ This job changes what clients are billed, so:
 
 - **The fee:** `list_fixed_fees(filter: { clientId or matterId, billed: false })`. If more than one unbilled fee fits the period, ask which one.
 - **The fee's time:** `list_time_entries(filter: { fixedFeeId, limit: 500 })`, without a `billed` filter.
-  - If the role isn't `operator` or `accountant`, add each attorney's `userId` from step 1, or the list holds only your own time.
   - If any linked entry is already billed, stop and ask. Some included hours were used on an earlier invoice, which fixes part of the order.
   - The unbilled `fixedFee` entries are the working set.
 - **Unlinked time:** `list_time_entries(filter: { matterId, billingType: "fixedFee", billed: false })`, keeping the entries with no `fixedFeeId`.
-  - If the fee has a `limitHours` and it's the matter's only fee with a limit, LeanLaw counts this time toward the limit when the invoice is drafted. Stop and ask the user to link it to the right fee, or make it billable, before you continue. Otherwise the draft adds a second overage line at the fee's limit rate.
-  - If not, report it; it doesn't count toward this fee.
+  - If the fee has a `limitHours`, stop and ask the user to link this time to the right fee, or make it billable, before you continue. LeanLaw can count unlinked fixed-fee time toward the fee's limit when the invoice is drafted, which adds a second overage line at the fee's limit rate.
+  - If the fee has no limit, report it; it doesn't count toward this fee.
 - **Rates:**
   - **Preferred:** each fixed-fee entry's `rate`, as returned by `list_time_entries`.
   - **Otherwise:** a rate table for the client from the user (for example "Jordan 250, Sam 275, Riley 350").
@@ -104,7 +104,6 @@ Changes
   Convert to billable + detach:  7 entries
   Split:                         1 entry (Jordan Lee 11/12, 2.0 h → 0.5 included / 1.5 overage)
 
-Not linked to any fee (doesn't count toward this fee): 3 entries, 4.2 h
 ```
 
 Ask: "Apply these changes for [clients]?" Wait for a clear yes.
@@ -175,5 +174,5 @@ Next step for the user: create the drafts as usual. The monthly fee bills on its
 
 - **Fall back to the user when the connector doesn't provide them.** If the connector doesn't return `limitHours` or entry `rate`, or the fee has no limit set, the user supplies the included hours and the rates. The order is then only as good as their rate table; the billed amount isn't affected.
 - **The connector can't set or change a fee's hour limit** (`create_fixed_fee` / `update_fixed_fee` have no limit fields). Set it in LeanLaw.
-- **Run this job before drafting.** If a fee has an hour limit in LeanLaw and the invoice is drafted while its hours exceed that limit, LeanLaw bills the overage as one line at the fee's limit rate, not at each attorney's rate. Those hours are the fee's linked time, plus the matter's unlinked fixed-fee time when it's the matter's only fee with a limit.
+- **Run this job before drafting.** If a fee has an hour limit in LeanLaw and the invoice is drafted while its hours exceed that limit, LeanLaw bills the overage as one line at the fee's limit rate, not at each attorney's rate. Those hours are the fee's linked time, and can include the matter's unlinked fixed-fee time.
 - **Invoice line items can't be read through the connector.** Check the draft in LeanLaw after creating it.
