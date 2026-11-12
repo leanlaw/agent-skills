@@ -24,15 +24,15 @@ compatibility: LeanLaw MCP connector (read and update time entries, read fixed f
 
 | Attorney | Rate | Entries |
 |---|---|---|
-| Marcus Halloway | $210 | 11/03 5.0 h, 11/10 3.0 h |
-| Devin Park | $265 | 11/04 4.0 h, 11/12 3.0 h |
-| Adrienne Cole | $320 | 11/05 2.5 h, 11/14 3.5 h |
-| Rosa Iglesias | $385 | 11/06 2.0 h, 11/18 1.5 h |
+| Rosa Iglesias | $165 | 11/03 5.0 h, 11/10 3.0 h |
+| Devin Park | $295 | 11/04 4.0 h, 11/12 3.0 h |
+| Adrienne Cole | $475 | 11/05 2.5 h, 11/14 3.5 h |
+| Marcus Halloway | $550 | 11/06 2.0 h, 11/18 1.5 h |
 
 Either way 4.5 hours are overage. Which 4.5 depends on the firm's policy:
 
-- **Lowest rate first:** Marcus's and Devin's 15 hours, then Adrienne's 2.5 h and 2.5 h of her 3.5 h entry, fill the 20 included hours. The overage is Adrienne 1.0 h ($320.00) and all 3.5 h of Rosa's time ($770.00 + $577.50): **$1,667.50**.
-- **Earliest first:** the six entries through 11/12 (19.5 h) and 0.5 h of Adrienne's 11/14 entry fill the included hours. The overage is Adrienne 3.0 h ($960.00) and Rosa's 11/18 1.5 h ($577.50): **$1,537.50**.
+- **Lowest rate first:** Rosa's and Devin's 15 hours, then Adrienne's 2.5 h and 2.5 h of her 3.5 h entry, fill the 20 included hours. The overage is Adrienne 1.0 h ($475.00) and all 3.5 h of Marcus's time ($1,100.00 + $825.00): **$2,400.00**.
+- **Earliest first:** the six entries through 11/12 (19.5 h) and 0.5 h of Adrienne's 11/14 entry fill the included hours. The overage is Adrienne 3.0 h ($1,425.00) and Marcus's 11/18 1.5 h ($825.00): **$2,250.00**.
 
 ### Related jobs (handled elsewhere)
 
@@ -124,11 +124,11 @@ The example above, with the firm's order set to lowest rate first:
 ```
 Kestrel Aerial Imaging — Monthly Fee (11/30) — 20.0 included hours
 Order: lowest rate first
-Worked: 24.5 h · Included: 20.0 h · Overage: 4.5 h ≈ $1,667.50
+Worked: 24.5 h · Included: 20.0 h · Overage: 4.5 h ≈ $2,400.00
 
 Overage by attorney
-  Rosa Iglesias     $385   3.5 h   $1,347.50
-  Adrienne Cole     $320   1.0 h     $320.00   (split entry)
+  Marcus Halloway   $550   3.5 h   $1,925.00
+  Adrienne Cole     $475   1.0 h     $475.00   (split entry)
 
 Changes
   Convert to billable + detach:  2 entries
