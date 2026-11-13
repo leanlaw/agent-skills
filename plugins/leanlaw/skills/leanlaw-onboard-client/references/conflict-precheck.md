@@ -23,24 +23,39 @@ Show the list and ask "anyone else?" once. In litigation the letter often names 
 
 ## The searches
 
-For each party, search both clients and matters, **including archived matters**: a former client
-can be a conflict.
+### With `check_conflicts`
+
+Use `check_conflicts` when the connector offers it. One call checks every party against every
+client and matter in the firm, **including archived ones and matters the user can't open**, and
+covers the conflict information recorded on other matters: adverse, opposing and related parties,
+referral sources, notes and billing instructions.
+
+- Pass every party in one `query`, separated by `;`. A comma doesn't separate, so
+  "Riverbend Holdings, LLC" stays one name.
+- Pass names as written, suffixes and all. The tool handles typos, nicknames and entity
+  suffixes itself, so don't trim "Riverbend Holdings LLC" to "Riverbend".
+- Read the summary line. If it says partial matches weren't shown, call again with
+  `includePartialMatches: true`, and list those hits under name similarity.
+- A party missing from `queryItems` was **not checked**: either it had nothing to search once role
+  words and suffixes were removed (an "Inc." on its own), or it was past the 25-name limit. Say so
+  in the report, and check anything past the limit in a second call.
+- Each match names the party that produced it (`queryItem`), the client and matter with their ids,
+  and every `field` it matched, with that field's full text. Use the field to classify the hit:
+  `adverse`, `opposing`, `relatedAdverse` and `relatedClient` are a matter's conflict information;
+  `clientName`, `companyName`, `firstName`, `lastName` and `email` are on a client.
+
+Then, for every party whose email address the letter gives, also run `list_clients` with `email`
+(below): it finds an existing client recorded under a different name, which a name check can't.
+
+### Without it
+
+If the connector has no `check_conflicts`, say so and fall back to the list tools. For each party, search
+both clients and matters, **including archived matters**: a former client can be a conflict.
 
 - `list_clients` with `query` — matches client name or reference.
 - `list_matters` with `query` and no `archived` filter — matches matter name, client name, matter
   reference and client reference, so it also finds a party named in a matter title such as
-  "Ames v. Riverbend".
-- `list_clients` with `email`, for every party whose email address the letter gives — matches a
-  client's contact email and CC addresses. This finds an existing client recorded under a
-  different name: the same person behind a new entity, or an estate whose personal
-  representative was a client before. Search the full address first. If it finds nothing and the
-  domain isn't a public one (gmail.com, outlook.com, yahoo.com, icloud.com and the like) or the
-  firm's own, search the domain too, as `email: "@riverbend.example"`. A domain hit points at an
-  organization, not a person, so list it as name similarity unless the reviewer says otherwise.
-
-  To confirm the filter is applied, an address that can't exist, such as
-  `email: "nobody@example.invalid"`, must return no clients. If it returns clients, the filter
-  was ignored, and an email search that "found" a client means nothing.
+  "Ames v. Riverbend". It does not search the conflict information on other matters.
 
 `query` is a substring match, so search the **distinctive part** of a name, not the whole string:
 
@@ -52,8 +67,22 @@ can be a conflict.
 - Two or three narrow searches beat one broad one. If a search returns more than a page, the term
   is too broad; narrow it rather than paging through hundreds of rows.
 
-Record every search term used. It goes in the report, so a reviewer can see what was and wasn't
-searched.
+### Email search (either way)
+
+`list_clients` with `email`, for every party whose email address the letter gives, matches a
+client's contact email and CC addresses. This finds an existing client recorded under a different
+name: the same person behind a new entity, or an estate whose personal representative was a
+client before. Search the full address first. If it finds nothing and the domain isn't a public
+one (gmail.com, outlook.com, yahoo.com, icloud.com and the like) or the firm's own, search the
+domain too, as `email: "@riverbend.example"`. A domain hit points at an organization, not a
+person, so list it as name similarity unless the reviewer says otherwise.
+
+To confirm the filter is applied, an address that can't exist, such as
+`email: "nobody@example.invalid"`, must return no clients. If it returns clients, the filter was
+ignored, and an email search that "found" a client means nothing.
+
+Record every name and search term used. They go in the report, so a reviewer can see what was and
+wasn't searched.
 
 ## Classifying a hit
 
@@ -66,8 +95,8 @@ searched.
 | **Related party is a client, or named in a matter** | Usually less serious, but the reviewer decides |
 | **Name similarity only** | A partial match on a common word. List it lower down; don't drop it |
 
-For each hit that matters, `get_matter` gives the responsible attorney, whether the matter is
-archived, and the conflict information recorded on it. Include those in the report.
+For each hit that matters, `get_matter` gives the responsible attorney and the conflict
+information recorded on it. Include those in the report.
 
 Don't decide that a hit is or isn't the same entity. Say what matched and let the reviewer decide.
 
@@ -79,19 +108,19 @@ Use this format every time:
 CONFLICT PRE-CHECK — Riverbend Holdings LLC / Series B financing
 Run 2026-10-01 by Dana Whitfield via the LeanLaw connector
 
-Parties searched
-  Client          Riverbend Holdings LLC      terms: "Riverbend"
-  Affiliate       Riverbend Capital LP        terms: "Riverbend"
-  Principal       Jordan Ames                 terms: "Ames", "Jordan Ames",
-                                              jordan@riverbend.example, @riverbend.example
-  Adverse         Northgate Ventures          terms: "Northgate"
+Parties checked (check_conflicts, partial matches included)
+  Client          Riverbend Holdings LLC
+  Affiliate       Riverbend Capital LP
+  Principal       Jordan Ames                 also: jordan@riverbend.example, @riverbend.example
+  Adverse         Northgate Ventures
 
 Hits to review (2)
   ! Adverse party is an existing client
-    Northgate Ventures Inc.  client ref 2210 · 3 matters, 1 open
+    Northgate Ventures Inc.  client · matched on client name · 3 matters, 1 open
     Open: "Northgate – lease review" · responsible Priya Shah
   · Related party is named in a matter (archived)
-    "Ames v. Coastal Lending" · client Coastal Lending · archived 2024 · responsible Dana Whitfield
+    "Coastal Lending – refinance" · client Coastal Lending · archived · responsible Dana Whitfield
+    matched on adverse: "Jordan Ames; Ames Family Trust"
 
 Expected
   Riverbend Capital LP is an existing client (ref 1042, 2 open matters)
@@ -99,15 +128,18 @@ Expected
 No matches
   Jordan Ames (as a client)
 
-Not searched: contacts, conflict information stored on other matters, and anything outside
-LeanLaw. This is a name search, not a conflict clearance.
+Not searched: time-entry narratives and anything outside LeanLaw. This is a name search, not a
+conflict clearance.
 ```
 
 - Hits to review come first, the most serious first, each with enough detail to judge without
   opening LeanLaw.
 - Every party appears somewhere in the report, including those with no matches, so it's clear
-  they were searched.
-- The closing line about what wasn't searched always appears.
+  they were searched. A party `check_conflicts` didn't check is listed as not checked, with the
+  reason.
+- The closing line about what wasn't searched always appears. With the list-tool fallback it
+  reads: "Not searched: contacts, conflict information stored on other matters, time-entry
+  narratives and anything outside LeanLaw."
 
 ### Adjusting the format
 
@@ -116,7 +148,7 @@ an extra party role, a different order or wording, use it for the rest of the ru
 they add it to their agent's instructions for this skill so every run uses it. Keep these whatever
 the format:
 
-- every party searched, with the terms used;
+- every party searched, with the terms used, and any that weren't checked;
 - the hits;
 - the line saying what wasn't searched.
 
