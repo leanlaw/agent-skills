@@ -1,0 +1,108 @@
+{
+  "skill_name": "leanlaw-subscription-overage",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Run month-end overage for Pellham Ridge Holdings, Fractional General Counsel Subscription, for November. We count the lowest-rate time against the included hours first. Show me the preview, then go ahead.",
+      "expected_output": "Fixture: one unbilled November fee with limitHours 6 and five linked fixed-fee entries totalling 8.0 h — Rosa Iglesias 1.5 h at $165 (11/02), Devin Park 2.0 h at $295 (11/03), Adrienne Cole 1.5 h at $475 (11/04) and 1.5 h at $475 (11/06), Marcus Halloway 1.5 h at $550 (11/05). The skill previews 2.0 h of overage worth $1,062.50, gets approval, converts Marcus's entry, splits Adrienne's 11/06 entry 1.0 included / 0.5 overage, and verifies the result.",
+      "files": [],
+      "expectations": [
+        "Calls get_me before any other tool and checks for the rates permission",
+        "Reads included hours from the fee's limitHours (6) rather than from the fee amount or description",
+        "Orders the time by each fixed-fee entry's hourlyRate and never reads rate or amount on fixed-fee entries",
+        "The preview shows 2.0 overage hours and $1,062.50: Marcus Halloway 1.5 h ($825.00) and Adrienne Cole 0.5 h ($237.50)",
+        "Splits Adrienne Cole's later (11/06) entry, not her 11/04 entry, because the date tiebreak puts 11/04 first",
+        "Shows the preview and waits for approval before any write",
+        "Creates the 1.0 h included portion on the fee with the original's attorney, date, time and description before converting the original",
+        "Converts each overage entry with billingType billable and fixedFeeId 00000000-0000-0000-0000-000000000000 in the same update_time_entry call",
+        "Confirms each converted entry's response has no fixedFeeId and a rate equal to the hourlyRate the order used",
+        "After the writes, confirms fixed-fee hours on the fee equal 6.0, billable hours rose by 2.0 and $1,062.50, and total hours stayed 8.0"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Run the overage again for Pellham Ridge Holdings, Fractional General Counsel Subscription, November. Lowest rate first.",
+      "expected_output": "Fixture: the state after eval 1 — 6.0 h still linked to the fee against limitHours 6, and the overage entries already billable and detached. The skill finds nothing to bill and writes nothing.",
+      "files": [],
+      "expectations": [
+        "Reports that the linked time is at or under the 6 included hours",
+        "Makes no create_time_entry or update_time_entry calls",
+        "Does not count the already-billable entries toward the included hours"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Bill the November overage for Pellham Ridge Holdings, Fractional General Counsel Subscription.",
+      "expected_output": "Fixture: the connection belongs to a Time Keeper without the rates permission, so get_me shows no read:rates and time entries come back without hourlyRate. The skill stops at the access check and explains why.",
+      "files": [],
+      "expectations": [
+        "Calls get_me first",
+        "Stops before listing fees or time entries",
+        "Explains that without the rates permission it can't read anyone's hourly rate, so it can't order the time or price the overage",
+        "Suggests reconnecting with the rates permission or having someone who has it run the job",
+        "Does not ask the user for a table of rates and does not guess rates",
+        "Makes no writes"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Run month-end overage for Pellham Ridge Holdings, Fractional General Counsel Subscription, for November. We count time against the included hours in the order it was worked. Preview only, don't change anything.",
+      "expected_output": "Fixture: the same 8.0 h as eval 1, before any changes. Earliest first, the first four entries reach 6.5 h, so Marcus Halloway's 11/05 entry splits 1.0 included / 0.5 overage and Adrienne Cole's 11/06 1.5 h is overage: 2.0 h worth $987.50 ($275.00 + $712.50).",
+      "files": [],
+      "expectations": [
+        "Uses the order the user gave (earliest first) rather than lowest rate first",
+        "The preview shows 2.0 overage hours and $987.50: Marcus Halloway 0.5 h ($275.00) and Adrienne Cole 1.5 h ($712.50)",
+        "Names Marcus Halloway's 11/05 entry as the split",
+        "Makes no writes"
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Bill this month's overage for Kestrel Aerial Imaging, Outside General Counsel Subscription. Lowest rate first.",
+      "expected_output": "Fixture: the fee has no hour limit set (limitHours is absent), although its description mentions included hours. The skill asks the user for the included hours instead of inferring them.",
+      "files": [],
+      "expectations": [
+        "Notices that the fee has no limitHours",
+        "Asks the user how many hours are included",
+        "Does not take the included hours from the fee's description or amount",
+        "Makes no writes before the user answers and approves a preview"
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Run month-end overage for Pellham Ridge Holdings, Fractional General Counsel Subscription. Lowest rate first.",
+      "expected_output": "Fixture: the fee has limitHours set, and the matter also has 1.0 h of unbilled fixed-fee time that isn't linked to any fee. The skill stops and asks the user to link that time or make it billable.",
+      "files": [],
+      "expectations": [
+        "Finds the unlinked fixed-fee entry on the matter",
+        "Stops before the preview and asks the user to link it to the right fee or make it billable",
+        "Explains that LeanLaw can count unlinked fixed-fee time toward the fee's limit at drafting, adding a second overage line",
+        "Makes no writes"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Run month-end overage for Pellham Ridge Holdings, Fractional General Counsel Subscription. Lowest rate first.",
+      "expected_output": "Fixture: Marcus Halloway's fixed-fee entry on this fee has an hourlyRate of $200, while his billable time on other matters is at $550. The skill flags the low rate in the preview and asks before converting his time.",
+      "files": [],
+      "expectations": [
+        "Compares Marcus Halloway's hourlyRate on the fee with his rate on billable time on other matters",
+        "Flags the rate in the preview with both figures",
+        "Says the stored rate may be a cost figure rather than a billing rate",
+        "Asks before converting Marcus Halloway's entries"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "Run month-end overage for Pellham Ridge Holdings, Fractional General Counsel Subscription. Lowest rate first.",
+      "expected_output": "Fixture: the November time is already on a draft invoice. The connector can't edit invoiced entries, so the skill makes no changes and tells the user what to break out in the draft editor.",
+      "files": [],
+      "expectations": [
+        "Detects the draft with select: invoice and invoice.invoiceState draft",
+        "Makes no writes",
+        "Lists the entries to break out of the fixed fee in the draft editor, in the firm's order, including any split",
+        "Says plainly that no changes were made"
+      ]
+    }
+  ]
+}
