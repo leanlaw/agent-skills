@@ -1,0 +1,18 @@
+{
+  "name": "leanlaw-agent-skills",
+  "owner": {
+    "name": "LeanLaw",
+    "url": "https://leanlaw.co"
+  },
+  "metadata": {
+    "description": "Agent skills for LeanLaw firms. Requires the LeanLaw MCP connector.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "leanlaw",
+      "source": "./plugins/leanlaw",
+      "description": "Agent skills for running a law firm's billing workflow in LeanLaw over the LeanLaw MCP connector."
+    }
+  ]
+}
